@@ -24,7 +24,7 @@ $app->get(
         <tr><td><b> /..... </b></td><td> First query requirement: The measurements around Moscow(200km radius, from the centre of Moscow. Moscow local time).<br> 
 And only if the temperature is higher than 18 degrees celsius (query, max response time: 2 minutes) </td></tr>
 
-        <tr><td><b> /..... </b></td><td> Second query requirement: With every Friday  22:00 – 00:00 will this query be accessed<br>
+        <tr><td><b> /top10 </b></td><td> Second query requirement: With every Friday  22:00 – 00:00 will this query be accessed<br>
 Also about top 10 peak temperature in 24h per longitude, <br>
 only for Moscow (indicate which country the data is from) (max response time: 10 seconds)<br>
 This should be available from Monday till Saturday 6:00 ~ 8:00 AM Moscow localtime (GMT +3) </td></tr>
@@ -74,7 +74,31 @@ Also about top 10 peak temperature in 24h per longitude,
 only for Moscow (indicate which country the data is from) (max response time: 10 seconds)
 This should be available from Monday till Saturday 6:00 ~ 8:00 AM Moscow localtime (GMT +3)
 */
-
+$app->get(
+    '/top10',
+    function(){
+        $conn = Connection::getInstance();
+        $statement = $conn->db->prepare("
+            SELECT s.country, m.temp, s.name, s.country, s.longitude, m.date, m.time 
+            FROM measurements AS m
+            JOIN stations AS s ON m.stn = s.stn
+            WHERE s.longitude LIKE CONCAT (
+                (SELECT TRUNCATE(longitude,0) 
+                FROM stations
+                WHERE name = 'MOSKVA'
+                ),'%'
+            )
+            AND date >= now() - INTERVAL 1 DAY
+            group by s.country
+            ORDER BY temp DESC 
+            LIMIT 10");
+        $statement->execute();
+        $results = $statement->fetchAll(PDO::FETCH_ASSOC);
+        
+        $json = json_encode($results);
+        echo $json;
+    }
+);
 
 /*
 Third:
