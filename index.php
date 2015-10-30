@@ -270,7 +270,7 @@ $app->post(
         $results = $statement->fetchAll();
 
         if( count($results) <> 1 ){
-            $error = array("error"=> array("text"=>"Username or Password does not exist or is not correct")); 
+            $error = array("error"=> array("text"=>"Username or Password does not exist, is not filled in, or is not correct")); 
             echo json_encode($error); 
         }else if( count($results) == 1){
             $_SESSION['loggedin'] = true;
