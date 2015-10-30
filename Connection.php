@@ -14,7 +14,7 @@ class Connection {
 		$host = "based.rkallenkoot.nl";
 		$dbname = "unwdmi";
 		$user = "unwdmi";
-		$password = "";
+		$password = "bamiballen420";
 
 		$connectionString = "mysql:host={$host};dbname={$dbname};charset=utf8;connect_timeout=15";
 		$this->db = new PDO($connectionString, $user, $password);
