@@ -23,7 +23,6 @@ $app->add(new \Slim\Middleware\SessionCookie(array(
 $app->get(
     '/',
     function () {
-        echo "LOGGED IN: " . $_SESSION['loggedin'] . "<br>";
         echo "De volgende params kunnen worden gebruikt: <br>
         <table>
         <tr><th>Params</th><th>Description</th></tr>
@@ -31,8 +30,6 @@ $app->get(
         <tr><td><b> /station/:stationnumber </b></td><td> Alle info van dat stationnummer </td></tr>
 
         <tr><td><b> /station/all </b></td><td> Alle info van alle stations </td></tr>
-
-        <tr><td><b> /..... </b></td><td> More soon </td></tr>
 
         <tr><td><b> /200moscow </b></td><td> Alle info over alle stations in een radius van 200km rondom moskou </td></tr>
 
@@ -46,17 +43,6 @@ This should be available from Monday till Saturday 6:00 ~ 8:00 AM Moscow localti
 
         <tr><td><b> /rainfall/:stationnumber </b></td><td> Third query requirement: Rainfall in the world of any weatherstation of the current day
 (from the current time till 00:00, going back) </td></tr>
-        ";
-
-        echo "
-            <form action='/login' method='post'>
-              email:<br>
-              <input type='text' name='email'>
-              <br>
-              password:<br>
-              <input type='password' name='password'>
-              <button type='submit' name='submit'>Login</button>
-            </form>
         ";
     }
 );
