@@ -23,6 +23,7 @@ $app->add(new \Slim\Middleware\SessionCookie(array(
 $app->get(
     '/',
     function () {
+        echo "LOGGED IN: " . $_SESSION['loggedin'] . "<br>";
         echo "De volgende params kunnen worden gebruikt: <br>
         <table>
         <tr><th>Params</th><th>Description</th></tr>
@@ -43,6 +44,17 @@ This should be available from Monday till Saturday 6:00 ~ 8:00 AM Moscow localti
 
         <tr><td><b> /rainfall/:stationnumber </b></td><td> Third query requirement: Rainfall in the world of any weatherstation of the current day
 (from the current time till 00:00, going back) </td></tr>
+        ";
+
+        echo "
+            <form action='/login' method='post'>
+              email:<br>
+              <input type='text' name='email'>
+              <br>
+              password:<br>
+              <input type='password' name='password'>
+              <button type='submit' name='submit'>Login</button>
+            </form>
         ";
     }
 );
@@ -243,7 +255,6 @@ function distance($lat1, $lon1, $lat2, $lon2) {
     $c = 2 * atan2(sqrt($a), sqrt(1 - $a));
     $km = $r * $c;
 
-    //echo '<br/>'.$km;
     return $km;
 }
 
@@ -263,6 +274,8 @@ $app->post(
             echo json_encode($error); 
         }else if( count($results) == 1){
             $_SESSION['loggedin'] = true;
+            $success = array("success"=> array("text"=>"Log in successful")); 
+            echo json_encode($success); 
         }
     }
 );
