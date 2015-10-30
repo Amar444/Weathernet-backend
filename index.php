@@ -127,7 +127,7 @@ $app->get(
 
          $stationnummers = implode(",",$stns);
 
-        $statement2 = $conn->db->prepare("SELECT * FROM measurements  WHERE stn in ($stationnummers)");
+        $statement2 = $conn->db->prepare("SELECT * FROM stations  WHERE stn in ($stationnummers)" );
         $statement2->execute();
         $statement2->execute();
         $results2 = $statement2->fetchALL();
