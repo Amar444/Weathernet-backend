@@ -21,6 +21,8 @@ $app->get(
 
         <tr><td><b> /..... </b></td><td> More soon </td></tr>
 
+        <tr><td><b> /200moscow </b></td><td> Alle info over alle stations in een radius van 200km rondom moskou </td></tr>
+
         <tr><td><b> /moscow </b></td><td> First query requirement: The measurements around Moscow(200km radius, from the centre of Moscow. Moscow local time).<br> 
 And only if the temperature is higher than 18 degrees celsius (query, max response time: 2 minutes) </td></tr>
 
@@ -91,15 +93,53 @@ $app->get(
 
         $stationnummers = implode(",",$stns);
 
-        $statement2 = $conn->db->prepare("SELECT stn, temp FROM measurements  WHERE stn in ($stationnummers) AND temp > 10");
+        $statement2 = $conn->db->prepare("SELECT stn, temp FROM measurements  WHERE stn in ($stationnummers) AND temp > 18");
         $statement2->execute();
         $statement2->execute();
         $results2 = $statement2->fetchALL();
 
         $json = json_encode($results2);
         echo $json;
-    }
+
+            }
 );
+
+$app->get(
+    '/200moscow',
+        function(){
+            $conn = Connection::getInstance();
+        $statement = $conn->db->prepare("SELECT stn, latitude, longitude FROM stations");
+        $stmt = $conn->db->prepare("SELECT latitude, longitude FROM stations where name = 'MOSKVA'");
+        
+        $statement->execute();
+        $stmt->execute();
+        
+        $allStations = $statement->fetchAll();
+        $moskvaStation = $stmt->fetchAll();
+
+        $stns = [];
+        foreach($allStations as $station){
+            $afstand = distance($moskvaStation[0]['latitude'], $moskvaStation[0]['longitude'],$station['latitude'],$station['longitude']);
+            if($afstand <= 200){
+                $stns[] = $station['stn'];
+            }
+        }
+
+         $stationnummers = implode(",",$stns);
+
+        $statement2 = $conn->db->prepare("SELECT * FROM measurements  WHERE stn in ($stationnummers)");
+        $statement2->execute();
+        $statement2->execute();
+        $results2 = $statement2->fetchALL();
+
+        $json = json_encode($results2);
+        echo $json;
+
+        }
+
+
+
+    );
 
 /*
 Second:
