@@ -193,6 +193,73 @@ $app->get(
 );
 
 
+$app->get(
+    '/iristest',
+    function(){
+        $conn = Connection::getInstance();
+        $statement = $conn->db->prepare("SELECT stn, latitude, longitude FROM stations");
+        $stmt = $conn->db->prepare("SELECT latitude, longitude FROM stations where name = 'MOSKVA'");
+
+        $stmt->execute();
+        $statement->execute();
+
+        $allStations = $statement->fetchAll();
+        $moskvaStation = $stmt->fetchAll();
+
+        //print_r($moskvaStation);
+        //echo "<br>";
+        //echo $moskvaStation[0]['latitude'];
+        $stns = [];
+        foreach($allStations as $station){
+            $afstand = distance($moskvaStation[0]['latitude'], $moskvaStation[0]['longitude'],$station['latitude'],$station['longitude']);
+            if($afstand <= 200){
+               // echo $afstand;
+                $stns[] = $station['stn'];
+               //echo "<br>";
+            }
+            // else { echo "hoi";}
+        }
+
+            //print_r($stns);
+
+        $stationnummers = implode(",",$stns);
+       // var_dump($stationnummers);
+
+        $statement2 = $conn->db->prepare("SELECT stn, temp FROM measurements  WHERE stn in ($stationnummers) AND temp > 10");
+        $statement2->execute();
+        $statement2->execute();
+        $results2 = $statement2->fetchALL();
+
+
+         $json = json_encode($results2);
+         echo $json;
+
+        // $json = json_encode($moskvaStation);
+        // echo $json;
+
+
+        });
+
+
+function distance($lat1, $lon1, $lat2, $lon2) {
+
+    $pi80 = M_PI / 180;
+    $lat1 *= $pi80;
+    $lon1 *= $pi80;
+    $lat2 *= $pi80;
+    $lon2 *= $pi80;
+
+    $r = 6372.797; // mean radius of Earth in km
+    $dlat = $lat2 - $lat1;
+    $dlon = $lon2 - $lon1;
+    $a = sin($dlat / 2) * sin($dlat / 2) + cos($lat1) * cos($lat2) * sin($dlon / 2) * sin($dlon / 2);
+    $c = 2 * atan2(sqrt($a), sqrt(1 - $a));
+    $km = $r * $c;
+
+    //echo '<br/>'.$km;
+    return $km;
+}
+
 
 function distance($lat1, $lon1, $lat2, $lon2) {
 
