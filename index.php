@@ -44,10 +44,10 @@ $app->group('/station', function () use ($app) {
             $conn = Connection::getInstance();
 
             if($station == 'all'){
-                $statement = $conn->db->prepare("SELECT * FROM stations");
+                $statement = $conn->db->prepare("SELECT stn as 'id', name as 'title', country, latitude, longitude, elevation FROM stations");
                 $statement->execute();
             }else {
-                $statement = $conn->db->prepare("SELECT * FROM stations WHERE stn = :stn");
+                $statement = $conn->db->prepare("SELECT stn as 'id', name as 'title', country latitude, longitude, elevation FROM stations WHERE stn = :stn");
                 $statement->execute(array(':stn' => "$station"));
             }
             $results = $statement->fetchAll(PDO::FETCH_ASSOC);
@@ -191,9 +191,6 @@ $app->get(
         echo $json;
     }
 );
-
-
-
 
 function distance($lat1, $lon1, $lat2, $lon2) {
 
