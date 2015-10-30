@@ -21,7 +21,7 @@ $app->get(
 
         <tr><td><b> /..... </b></td><td> More soon </td></tr>
 
-        <tr><td><b> /..... </b></td><td> First query requirement: The measurements around Moscow(200km radius, from the centre of Moscow. Moscow local time).<br> 
+        <tr><td><b> /moscow </b></td><td> First query requirement: The measurements around Moscow(200km radius, from the centre of Moscow. Moscow local time).<br> 
 And only if the temperature is higher than 18 degrees celsius (query, max response time: 2 minutes) </td></tr>
 
         <tr><td><b> /top10 </b></td><td> Second query requirement: With every Friday  22:00 – 00:00 will this query be accessed<br>
@@ -67,7 +67,41 @@ $app->group('/measurement', function () use ($app) {
 First: 
 The measurements around Moscow(200km radius, from the centre of Moscow. Moscow local time). 
 And only if the temperature is higher than 18 degrees celsius (query, max response time: 2 minutes)
+*/
+$app->get(
+    '/moscow',
+    function(){
+        $conn = Connection::getInstance();
+        $statement = $conn->db->prepare("SELECT stn, latitude, longitude FROM stations");
+        $stmt = $conn->db->prepare("SELECT latitude, longitude FROM stations where name = 'MOSKVA'");
+        
+        $statement->execute();
+        $stmt->execute();
+        
+        $allStations = $statement->fetchAll();
+        $moskvaStation = $stmt->fetchAll();
 
+        $stns = [];
+        foreach($allStations as $station){
+            $afstand = distance($moskvaStation[0]['latitude'], $moskvaStation[0]['longitude'],$station['latitude'],$station['longitude']);
+            if($afstand <= 200){
+                $stns[] = $station['stn'];
+            }
+        }
+
+        $stationnummers = implode(",",$stns);
+
+        $statement2 = $conn->db->prepare("SELECT stn, temp FROM measurements  WHERE stn in ($stationnummers) AND temp > 10");
+        $statement2->execute();
+        $statement2->execute();
+        $results2 = $statement2->fetchALL();
+
+        $json = json_encode($results2);
+        echo $json;
+    }
+);
+
+/*
 Second:
 With every Friday  22:00 – 00:00 will this query be accessed
 Also about top 10 peak temperature in 24h per longitude, 
@@ -118,53 +152,6 @@ $app->get(
     }
 );
 
-
-$app->get(
-    '/iristest',
-    function(){
-        $conn = Connection::getInstance();
-        $statement = $conn->db->prepare("SELECT stn, latitude, longitude FROM stations");
-        $stmt = $conn->db->prepare("SELECT latitude, longitude FROM stations where name = 'MOSKVA'");
-        
-        $stmt->execute();
-        $statement->execute();
-        
-        $allStations = $statement->fetchAll();
-        $moskvaStation = $stmt->fetchAll();
-
-        //print_r($moskvaStation);
-        //echo "<br>";
-        //echo $moskvaStation[0]['latitude'];
-        $stns = [];
-        foreach($allStations as $station){
-            $afstand = distance($moskvaStation[0]['latitude'], $moskvaStation[0]['longitude'],$station['latitude'],$station['longitude']);
-            if($afstand <= 200){
-               // echo $afstand; 
-                $stns[] = $station['stn'];
-               //echo "<br>";
-            }
-            // else { echo "hoi";}
-        }
-
-            //print_r($stns);
-
-        $stationnummers = implode(",",$stns);
-       // var_dump($stationnummers);
-
-        $statement2 = $conn->db->prepare("SELECT stn, temp FROM measurements  WHERE stn in ($stationnummers) AND temp > 10");
-        $statement2->execute();
-        $statement2->execute();
-        $results2 = $statement2->fetchALL();
-
-
-         $json = json_encode($results2);
-         echo $json;
-
-        // $json = json_encode($moskvaStation);
-        // echo $json;
-
-
-        });
 
 
 function distance($lat1, $lon1, $lat2, $lon2) {
