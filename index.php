@@ -81,6 +81,20 @@ function distance($lat1, $lon1, $lat2, $lon2) {
     return $km;
 }
 
+function exportCSV($query, $headerArray, $filename){
+    $conn = Connection::getInstance();
+    $statement = $conn->db->prepare($query);
+    $statement->setFetchMode(PDO::FETCH_ASSOC);
+    $statement->execute();
+
+    $csv = Writer::createFromFileObject(new SplTempFileObject());
+    $csv->insertOne($headerArray);
+    $csv->insertAll($statement);
+    $csv->output($filename.'.csv'); 
+    die;
+
+}
+
 //LOGIN
 $app->post(
     '/login',
@@ -189,7 +203,7 @@ $app->group('/moscow', function () use ($app) {
                 $stationnummers = implode(",",$stns);
 
                 if($export == "true"){
-                    $statement = $conn->db->prepare("
+                    $query = "
                         SELECT s.name, m.stn, m.date, m.time, m.temp 
                         FROM measurements AS m
                         JOIN stations AS s ON s.stn = m.stn
@@ -197,26 +211,22 @@ $app->group('/moscow', function () use ($app) {
                         IN ($stationnummers) 
                         AND m.date >= now()-interval 3 month
                         ORDER BY m.date, s.name, m.time DESC
-                        ");
-                    $statement->setFetchMode(PDO::FETCH_ASSOC);
-                    $statement->execute();
+                        ";
+                    $headerArray = array(['Name', 'Station', 'Date', 'Time', 'Temp celsius']);
+                    $filename = "moscow-temps";
 
-                    $csv = Writer::createFromFileObject(new SplTempFileObject());
-                    $csv->insertOne(['Name', 'Station', 'Date', 'Time', 'Temp celsius']);
-                    $csv->insertAll($statement);
-                //TODO VAN-TOT DATUM IN NAAM VERWERKEN? Of alleen laatste 3 maanden van nu? 
-                    $csv->output('moscow-temps.csv'); 
-                    die;
-                } else { 
-                //TODO: INNER JOIN VOOR STATION NAME
+                    exportCSV($query, $headerArray, $filename);
+
+                } else { //HAALT Alle measurements van de laatste 24h op
                     $statement2 = $conn->db->prepare("
-                        SELECT stn, temp 
-                        FROM measurements  
-                        WHERE stn 
+                        SELECT s.name, m.stn, m.temp, m.date, m.time 
+                        FROM measurements AS m
+                        JOIN stations AS s ON s.stn = m.stn
+                        WHERE m.stn 
                         IN ($stationnummers) 
-                        AND temp > 18
+                        AND m.temp > 18
+                        AND date >= now() - INTERVAL 1 DAY
                         ");
-                    $statement2->execute();
                     $statement2->execute();
                     $results2 = $statement2->fetchALL();
 
@@ -296,27 +306,43 @@ $app->get(
     '/top10',
     function() use($app){
         if($_SESSION['loggedin'] == true){
+            $export = $_GET['export'];
+
             $conn = Connection::getInstance();
-            $statement = $conn->db->prepare("
-                SELECT s.country, m.temp, s.name, s.country, s.longitude, m.date, m.time 
-                FROM measurements AS m
-                JOIN stations AS s ON m.stn = s.stn
-                WHERE s.longitude LIKE CONCAT (
-                    (SELECT TRUNCATE(longitude,0) 
-                    FROM stations
-                    WHERE name = 'MOSKVA'
-                    ),'%'
-                )
-                AND date >= now() - INTERVAL 1 DAY
-                group by s.country
-                ORDER BY temp DESC 
-                LIMIT 10
-                ");
-            $statement->execute();
-            $results = $statement->fetchAll(PDO::FETCH_ASSOC);
-            
-            $json = json_encode($results);
-            echo $json;
+
+            if($export == "true"){// TODO ------------------------------------------------------------
+                // $query = "
+                //     SELECT s.country, s.name, s.longitude, m.date, m.time, m.temp    
+                //     FROM measurements AS m
+                //     ... MOET NOG
+                //     ";
+                // $headerArray = array(['Country', 'Name', 'Longitude', 'Date', 'Time', 'Temp celsius']);
+                // $filename = "top10-temps-longitude-moscow";
+
+                // exportCSV($query, $headerArray, $filename);
+
+            } else {
+                $statement = $conn->db->prepare("
+                    SELECT s.country, m.temp, s.name, s.longitude, m.date, m.time 
+                    FROM measurements AS m
+                    JOIN stations AS s ON m.stn = s.stn
+                    WHERE s.longitude LIKE CONCAT (
+                        (SELECT TRUNCATE(longitude,0) 
+                        FROM stations
+                        WHERE name = 'MOSKVA'
+                        ),'%'
+                    )
+                    AND date >= now() - INTERVAL 1 DAY
+                    group by s.country
+                    ORDER BY temp DESC 
+                    LIMIT 10
+                    ");
+                $statement->execute();
+                $results = $statement->fetchAll(PDO::FETCH_ASSOC);
+                
+                $json = json_encode($results);
+                echo $json;
+            }
         } else {
             $app->response()->status(401);
             $error = array("error"=> array("text"=>"Not authorized!")); 
