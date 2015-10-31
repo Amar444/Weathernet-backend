@@ -1,6 +1,9 @@
 <?php
 require 'Slim/Slim.php';
 include_once 'Connection.php';
+use League\Csv\Reader;
+use League\Csv\Writer;
+require 'vendor/autoload.php';
 
 date_default_timezone_set('Europe/Moscow');
 
@@ -32,10 +35,12 @@ $app->get(
 
         <tr><td><b> /station/all </b></td><td> Alle info van alle stations </td></tr>
 
-        <tr><td><b> /200moscow </b></td><td> Alle info over alle stations in een radius van 200km rondom moskou </td></tr>
+        <tr><td><b> /moscow/all </b></td><td> Alle info over alle stations in een radius van 200km rondom moskou </td></tr>
 
-        <tr><td><b> /moscow </b></td><td> First query requirement: The measurements around Moscow(200km radius, from the centre of Moscow. Moscow local time).<br> 
+        <tr><td><b> /moscow/temp </b></td><td> First query requirement: The measurements around Moscow(200km radius, from the centre of Moscow. Moscow local time).<br> 
 And only if the temperature is higher than 18 degrees celsius (query, max response time: 2 minutes) </td></tr>
+
+         <tr><td><b> /moscow/temp?export=true </b></td><td> download csv van nu tot max 3 maanden geleden. </td></tr>
 
         <tr><td><b> /top10 </b></td><td> Second query requirement: With every Friday  22:00 – 00:00 will this query be accessed<br>
 Also about top 10 peak temperature in 24h per longitude, <br>
@@ -59,7 +64,50 @@ This should be available from Monday till Saturday 6:00 ~ 8:00 AM Moscow localti
     }
 );
 
+function distance($lat1, $lon1, $lat2, $lon2) {
+    $pi80 = M_PI / 180;
+    $lat1 *= $pi80;
+    $lon1 *= $pi80;
+    $lat2 *= $pi80;
+    $lon2 *= $pi80;
 
+    $r = 6372.797; // mean radius of Earth in km
+    $dlat = $lat2 - $lat1;
+    $dlon = $lon2 - $lon1;
+    $a = sin($dlat / 2) * sin($dlat / 2) + cos($lat1) * cos($lat2) * sin($dlon / 2) * sin($dlon / 2);
+    $c = 2 * atan2(sqrt($a), sqrt(1 - $a));
+    $km = $r * $c;
+
+    return $km;
+}
+
+//LOGIN
+$app->post(
+    '/login',
+    function () {
+        $email = $_POST['email'];
+        $password = $_POST['password'];
+
+        $conn = Connection::getInstance();
+        $statement = $conn->db->prepare("
+            SELECT * 
+            FROM users 
+            WHERE email = :email 
+            AND password = :password
+            ");
+        $statement->execute( array(':email' => "$email", ':password' => "$password") );
+        $results = $statement->fetchAll();
+
+        if( count($results) <> 1 ){
+            $error = array("error"=> array("text"=>"Username or Password does not exist, is not filled in, or is not correct")); 
+            echo json_encode($error); 
+        }else if( count($results) == 1){
+            $_SESSION['loggedin'] = true;
+            $success = array("success"=> array("text"=>"Log in successful")); 
+            echo json_encode($success); 
+        }
+    }
+);
 
 
 //***********************************************************
@@ -74,10 +122,17 @@ $app->group('/station', function () use ($app) {
                 $conn = Connection::getInstance();
 
                 if($station == 'all'){
-                    $statement = $conn->db->prepare("SELECT * FROM stations");
+                    $statement = $conn->db->prepare("
+                        SELECT * 
+                        FROM stations
+                        ");
                     $statement->execute();
                 }else {
-                    $statement = $conn->db->prepare("SELECT * FROM stations WHERE stn = :stn");
+                    $statement = $conn->db->prepare("
+                        SELECT * 
+                        FROM stations 
+                        WHERE stn = :stn
+                        ");
                     $statement->execute(array(':stn' => "$station"));
                 }
                 $results = $statement->fetchAll(PDO::FETCH_ASSOC);
@@ -99,84 +154,136 @@ First:
 The measurements around Moscow(200km radius, from the centre of Moscow. Moscow local time). 
 And only if the temperature is higher than 18 degrees celsius (query, max response time: 2 minutes)
 */
-$app->get(
-    '/moscow',
-    function() use ($app){
-        if($_SESSION['loggedin'] == true){
-            $conn = Connection::getInstance();
-            $statement = $conn->db->prepare("SELECT stn, latitude, longitude FROM stations");
-            $stmt = $conn->db->prepare("SELECT latitude, longitude FROM stations where name = 'MOSKVA'");
-            
-            $statement->execute();
-            $stmt->execute();
-            
-            $allStations = $statement->fetchAll();
-            $moskvaStation = $stmt->fetchAll();
-
-            $stns = [];
-            foreach($allStations as $station){
-                $afstand = distance($moskvaStation[0]['latitude'], $moskvaStation[0]['longitude'],$station['latitude'],$station['longitude']);
-                if($afstand <= 200){
-                    $stns[] = $station['stn'];
-                }
-            }
-
-            $stationnummers = implode(",",$stns);
-
-            $statement2 = $conn->db->prepare("SELECT stn, temp FROM measurements  WHERE stn in ($stationnummers) AND temp > 18");
-            $statement2->execute();
-            $statement2->execute();
-            $results2 = $statement2->fetchALL();
-
-            $json = json_encode($results2);
-            echo $json;
-        } else {
-            $app->response()->status(401);
-            $error = array("error"=> array("text"=>"Not authorized!")); 
-            echo json_encode($error); 
-        }
-    }
-);
-
-$app->get(
-    '/200moscow',
+$app->group('/moscow', function () use ($app) {
+    $app->get(
+        '/temp',
         function() use ($app){
-        if($_SESSION['loggedin'] == true){
-            $conn = Connection::getInstance();
-            $statement = $conn->db->prepare("SELECT stn, latitude, longitude FROM stations");
-            $stmt = $conn->db->prepare("SELECT latitude, longitude FROM stations where name = 'MOSKVA'");
-            
-            $statement->execute();
-            $stmt->execute();
-            
-            $allStations = $statement->fetchAll();
-            $moskvaStation = $stmt->fetchAll();
+            if($_SESSION['loggedin'] == true){
+                $export = $_GET['export'];
 
-            $stns = [];
-            foreach($allStations as $station){
-                $afstand = distance($moskvaStation[0]['latitude'], $moskvaStation[0]['longitude'],$station['latitude'],$station['longitude']);
-                if($afstand <= 200){
-                    $stns[] = $station['stn'];
+                $conn = Connection::getInstance();
+                $statement = $conn->db->prepare("
+                    SELECT stn, latitude, longitude 
+                    FROM stations
+                    ");
+                $stmt = $conn->db->prepare("
+                    SELECT latitude, longitude 
+                    FROM stations 
+                    WHERE name = 'MOSKVA'
+                    ");
+                
+                $statement->execute();
+                $stmt->execute();
+                
+                $allStations = $statement->fetchAll();
+                $moskvaStation = $stmt->fetchAll();
+
+                $stns = [];
+                foreach($allStations as $station){
+                    $afstand = distance($moskvaStation[0]['latitude'], $moskvaStation[0]['longitude'],$station['latitude'],$station['longitude']);
+                    if($afstand <= 200){
+                        $stns[] = $station['stn'];
+                    }
                 }
+
+                $stationnummers = implode(",",$stns);
+
+                if($export == "true"){
+                    $statement = $conn->db->prepare("
+                        SELECT s.name, m.stn, m.date, m.time, m.temp 
+                        FROM measurements AS m
+                        JOIN stations AS s ON s.stn = m.stn
+                        WHERE m.stn 
+                        IN ($stationnummers) 
+                        AND m.date >= now()-interval 3 month
+                        ORDER BY m.date, s.name, m.time DESC
+                        ");
+                    $statement->setFetchMode(PDO::FETCH_ASSOC);
+                    $statement->execute();
+
+                    $csv = Writer::createFromFileObject(new SplTempFileObject());
+                    $csv->insertOne(['Name', 'Station', 'Date', 'Time', 'Temp celsius']);
+                    $csv->insertAll($statement);
+                //TODO VAN-TOT DATUM IN NAAM VERWERKEN? Of alleen laatste 3 maanden van nu? 
+                    $csv->output('moscow-temps.csv'); 
+                    die;
+                } else { 
+                //TODO: INNER JOIN VOOR STATION NAME
+                    $statement2 = $conn->db->prepare("
+                        SELECT stn, temp 
+                        FROM measurements  
+                        WHERE stn 
+                        IN ($stationnummers) 
+                        AND temp > 18
+                        ");
+                    $statement2->execute();
+                    $statement2->execute();
+                    $results2 = $statement2->fetchALL();
+
+                    $json = json_encode($results2);
+                    echo $json;
+                }
+            } else {
+                $app->response()->status(401);
+                $error = array("error"=> array("text"=>"Not authorized!")); 
+                echo json_encode($error); 
+            }
+        }
+    );
+
+
+    $app->get(
+        '/all',
+            function() use ($app){
+            if($_SESSION['loggedin'] == true){
+                $conn = Connection::getInstance();
+                $statement = $conn->db->prepare("
+                    SELECT stn, latitude, longitude 
+                    FROM stations
+                    ");
+                $stmt = $conn->db->prepare("
+                    SELECT latitude, longitude 
+                    FROM stations 
+                    WHERE name = 'MOSKVA'
+                    ");
+                
+                $statement->execute();
+                $stmt->execute();
+                
+                $allStations = $statement->fetchAll();
+                $moskvaStation = $stmt->fetchAll();
+
+                $stns = [];
+                foreach($allStations as $station){
+                    $afstand = distance($moskvaStation[0]['latitude'], $moskvaStation[0]['longitude'],$station['latitude'],$station['longitude']);
+                    if($afstand <= 200){
+                        $stns[] = $station['stn'];
+                    }
+                }
+
+                $stationnummers = implode(",",$stns);
+
+                $statement2 = $conn->db->prepare("
+                    SELECT * 
+                    FROM stations 
+                    WHERE stn 
+                    IN ($stationnummers)
+                    ");
+                $statement2->execute();
+                $statement2->execute();
+                $results2 = $statement2->fetchALL();
+
+                $json = json_encode($results2);
+                echo $json;
+            } else {
+                $app->response()->status(401);
+                $error = array("error"=> array("text"=>"Not authorized!")); 
+                echo json_encode($error); 
             }
 
-            $stationnummers = implode(",",$stns);
-
-            $statement2 = $conn->db->prepare("SELECT * FROM stations  WHERE stn in ($stationnummers)" );
-            $statement2->execute();
-            $statement2->execute();
-            $results2 = $statement2->fetchALL();
-
-            $json = json_encode($results2);
-            echo $json;
-        } else {
-            $app->response()->status(401);
-            $error = array("error"=> array("text"=>"Not authorized!")); 
-            echo json_encode($error); 
         }
-
-    }
-);
+    );
+});
 
 /*
 Second:
@@ -203,7 +310,8 @@ $app->get(
                 AND date >= now() - INTERVAL 1 DAY
                 group by s.country
                 ORDER BY temp DESC 
-                LIMIT 10");
+                LIMIT 10
+                ");
             $statement->execute();
             $results = $statement->fetchAll(PDO::FETCH_ASSOC);
             
@@ -227,7 +335,12 @@ $app->get(
     function ($station) use ($app){
         if($_SESSION['loggedin'] == true){
             $conn = Connection::getInstance();
-            $statement = $conn->db->prepare("SELECT prcp, time FROM measurements WHERE stn = :stn AND date = :date");
+            $statement = $conn->db->prepare("
+                SELECT prcp, time 
+                FROM measurements 
+                WHERE stn = :stn 
+                AND date = :date
+                ");
             $statement->execute( array(':stn' => "$station", ':date' => date("Y-m-d")) );
             $results = $statement->fetchAll(PDO::FETCH_ASSOC);
             
@@ -241,43 +354,6 @@ $app->get(
     }
 );
 
-function distance($lat1, $lon1, $lat2, $lon2) {
-    $pi80 = M_PI / 180;
-    $lat1 *= $pi80;
-    $lon1 *= $pi80;
-    $lat2 *= $pi80;
-    $lon2 *= $pi80;
 
-    $r = 6372.797; // mean radius of Earth in km
-    $dlat = $lat2 - $lat1;
-    $dlon = $lon2 - $lon1;
-    $a = sin($dlat / 2) * sin($dlat / 2) + cos($lat1) * cos($lat2) * sin($dlon / 2) * sin($dlon / 2);
-    $c = 2 * atan2(sqrt($a), sqrt(1 - $a));
-    $km = $r * $c;
-
-    return $km;
-}
-
-$app->post(
-    '/login',
-    function () {
-        $email = $_POST['email'];
-        $password = $_POST['password'];
-
-        $conn = Connection::getInstance();
-        $statement = $conn->db->prepare("SELECT * FROM users WHERE email = :email AND password = :password");
-        $statement->execute( array(':email' => "$email", ':password' => "$password") );
-        $results = $statement->fetchAll();
-
-        if( count($results) <> 1 ){
-            $error = array("error"=> array("text"=>"Username or Password does not exist, is not filled in, or is not correct")); 
-            echo json_encode($error); 
-        }else if( count($results) == 1){
-            $_SESSION['loggedin'] = true;
-            $success = array("success"=> array("text"=>"Log in successful")); 
-            echo json_encode($success); 
-        }
-    }
-);
 
 $app->run();
