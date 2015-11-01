@@ -11,6 +11,12 @@ date_default_timezone_set('Europe/Moscow');
 
 $app = new \Slim\Slim();
 
+header('Access-Control-Allow-Origin: *');
+
+header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
+
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
+
 $app->add(new \Slim\Middleware\SessionCookie(array(
     'expires' => '20 minutes',
     'domain' => null,
