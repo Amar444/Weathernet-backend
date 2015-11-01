@@ -12,9 +12,7 @@ date_default_timezone_set('Europe/Moscow');
 $app = new \Slim\Slim();
 
 header('Access-Control-Allow-Origin: *');
-
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
-
 header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
 
 $app->add(new \Slim\Middleware\SessionCookie(array(
@@ -87,6 +85,18 @@ function distance($lat1, $lon1, $lat2, $lon2) {
     return $km;
 }
 
+function authenticateUser(){
+    return function() use ($app){
+        if($_SESSION['loggedin'] == false){
+            $app = \Slim\Slim::getInstance();
+            $app->response()->status(401);
+            header('Content-Type: application/json');
+            $error = array("error"=> array("text"=>"Not authorized!")); 
+            echo json_encode($error); 
+        }
+    };
+};
+
 function exportCSV($query, $headerArray, $filename){
     $conn = Connection::getInstance();
     $statement = $conn->db->prepare($query);
@@ -120,10 +130,12 @@ $app->post(
 
         if( count($results) <> 1 ){
             $error = array("error"=> array("text"=>"Username or Password does not exist, is not filled in, or is not correct")); 
+            header('Content-Type: application/json');
             echo json_encode($error); 
         }else if( count($results) == 1){
             $_SESSION['loggedin'] = true;
             $success = array("success"=> array("text"=>"Log in successful")); 
+            header('Content-Type: application/json');
             echo json_encode($success); 
         }
     }
@@ -136,34 +148,30 @@ $app->post(
 
 $app->group('/station', function () use ($app) {
     $app->get(
-        '/:station',
+        '/:station', 
+        authenticateUser(), 
         function ($station) use ($app) {
-            if($_SESSION['loggedin'] == true){
-                $conn = Connection::getInstance();
+            $conn = Connection::getInstance();
 
-                if($station == 'all'){
-                    $statement = $conn->db->prepare("
-                        SELECT * 
-                        FROM stations
-                        ");
-                    $statement->execute();
-                }else {
-                    $statement = $conn->db->prepare("
-                        SELECT * 
-                        FROM stations 
-                        WHERE stn = :stn
-                        ");
-                    $statement->execute(array(':stn' => "$station"));
-                }
-                $results = $statement->fetchAll(PDO::FETCH_ASSOC);
-
-                $json = json_encode($results);
-                echo $json;
-            } else {
-                $app->response()->status(401);
-                $error = array("error"=> array("text"=>"Not authorized!")); 
-                echo json_encode($error); 
+            if($station == 'all'){
+                $statement = $conn->db->prepare("
+                    SELECT * 
+                    FROM stations
+                    ");
+                $statement->execute();
+            }else {
+                $statement = $conn->db->prepare("
+                    SELECT * 
+                    FROM stations 
+                    WHERE stn = :stn
+                    ");
+                $statement->execute(array(':stn' => "$station"));
             }
+            $results = $statement->fetchAll(PDO::FETCH_ASSOC);
+
+            header('Content-Type: application/json');
+            $json = json_encode($results);
+            echo $json;
         }
     );
 });
@@ -177,72 +185,68 @@ And only if the temperature is higher than 18 degrees celsius (query, max respon
 $app->group('/moscow', function () use ($app) {
     $app->get(
         '/temp',
+        authenticateUser(),
         function() use ($app){
-            if($_SESSION['loggedin'] == true){
-                $export = $_GET['export'];
+            $export = $_GET['export'];
 
-                $conn = Connection::getInstance();
-                $statement = $conn->db->prepare("
-                    SELECT stn, latitude, longitude 
-                    FROM stations
-                    ");
-                $stmt = $conn->db->prepare("
-                    SELECT latitude, longitude 
-                    FROM stations 
-                    WHERE name = 'MOSKVA'
-                    ");
-                
-                $statement->execute();
-                $stmt->execute();
-                
-                $allStations = $statement->fetchAll();
-                $moskvaStation = $stmt->fetchAll();
+            $conn = Connection::getInstance();
+            $statement = $conn->db->prepare("
+                SELECT stn, latitude, longitude 
+                FROM stations
+                ");
+            $stmt = $conn->db->prepare("
+                SELECT latitude, longitude 
+                FROM stations 
+                WHERE name = 'MOSKVA'
+                ");
+            
+            $statement->execute();
+            $stmt->execute();
+            
+            $allStations = $statement->fetchAll();
+            $moskvaStation = $stmt->fetchAll();
 
-                $stns = [];
-                foreach($allStations as $station){
-                    $afstand = distance($moskvaStation[0]['latitude'], $moskvaStation[0]['longitude'],$station['latitude'],$station['longitude']);
-                    if($afstand <= 200){
-                        $stns[] = $station['stn'];
-                    }
+            $stns = [];
+            foreach($allStations as $station){
+                $afstand = distance($moskvaStation[0]['latitude'], $moskvaStation[0]['longitude'],$station['latitude'],$station['longitude']);
+                if($afstand <= 200){
+                    $stns[] = $station['stn'];
                 }
+            }
 
-                $stationnummers = implode(",",$stns);
+            $stationnummers = implode(",",$stns);
 
-                if($export == "true"){
-                    $query = "
-                        SELECT s.name, m.stn, m.date, m.time, m.temp 
-                        FROM measurements AS m
-                        JOIN stations AS s ON s.stn = m.stn
-                        WHERE m.stn 
-                        IN ($stationnummers) 
-                        AND m.date >= now()-interval 3 month
-                        ORDER BY m.date, s.name, m.time DESC
-                        ";
-                    $headerArray = array(['Name', 'Station', 'Date', 'Time', 'Temp celsius']);
-                    $filename = "moscow-temps";
+            if($export == "true"){
+                $query = "
+                    SELECT s.name, m.stn, m.date, m.time, m.temp 
+                    FROM measurements AS m
+                    JOIN stations AS s ON s.stn = m.stn
+                    WHERE m.stn 
+                    IN ($stationnummers) 
+                    AND m.date >= now()-interval 3 month
+                    ORDER BY m.date, s.name, m.time DESC
+                    ";
+                $headerArray = array('Name', 'Station', 'Date', 'Time', 'Temp celsius');
+                $filename = "moscow-temps";
 
-                    exportCSV($query, $headerArray, $filename);
+                exportCSV($query, $headerArray, $filename);
 
-                } else { //HAALT Alle measurements van de laatste 24h op
-                    $statement2 = $conn->db->prepare("
-                        SELECT s.name, m.stn, m.temp, m.date, m.time 
-                        FROM measurements AS m
-                        JOIN stations AS s ON s.stn = m.stn
-                        WHERE m.stn 
-                        IN ($stationnummers) 
-                        AND m.temp > 18
-                        AND date >= now() - INTERVAL 1 DAY
-                        ");
-                    $statement2->execute();
-                    $results2 = $statement2->fetchALL();
+            } else { //HAALT Alle measurements van de laatste 24h op
+                $statement2 = $conn->db->prepare("
+                    SELECT s.name, m.stn, m.temp, m.date, m.time 
+                    FROM measurements AS m
+                    JOIN stations AS s ON s.stn = m.stn
+                    WHERE m.stn 
+                    IN ($stationnummers) 
+                    AND m.temp > 18
+                    AND date >= now() - INTERVAL 1 DAY
+                    ");
+                $statement2->execute();
+                $results2 = $statement2->fetchALL();
 
-                    $json = json_encode($results2);
-                    echo $json;
-                }
-            } else {
-                $app->response()->status(401);
-                $error = array("error"=> array("text"=>"Not authorized!")); 
-                echo json_encode($error); 
+                header('Content-Type: application/json');
+                $json = json_encode($results2);
+                echo $json;
             }
         }
     );
@@ -250,53 +254,48 @@ $app->group('/moscow', function () use ($app) {
 
     $app->get(
         '/all',
-            function() use ($app){
-            if($_SESSION['loggedin'] == true){
-                $conn = Connection::getInstance();
-                $statement = $conn->db->prepare("
-                    SELECT stn, latitude, longitude 
-                    FROM stations
-                    ");
-                $stmt = $conn->db->prepare("
-                    SELECT latitude, longitude 
-                    FROM stations 
-                    WHERE name = 'MOSKVA'
-                    ");
-                
-                $statement->execute();
-                $stmt->execute();
-                
-                $allStations = $statement->fetchAll();
-                $moskvaStation = $stmt->fetchAll();
+        authenticateUser(),
+        function() use ($app){
+            $conn = Connection::getInstance();
+            $statement = $conn->db->prepare("
+                SELECT stn, latitude, longitude 
+                FROM stations
+                ");
+            $stmt = $conn->db->prepare("
+                SELECT latitude, longitude 
+                FROM stations 
+                WHERE name = 'MOSKVA'
+                ");
+            
+            $statement->execute();
+            $stmt->execute();
+            
+            $allStations = $statement->fetchAll();
+            $moskvaStation = $stmt->fetchAll();
 
-                $stns = [];
-                foreach($allStations as $station){
-                    $afstand = distance($moskvaStation[0]['latitude'], $moskvaStation[0]['longitude'],$station['latitude'],$station['longitude']);
-                    if($afstand <= 200){
-                        $stns[] = $station['stn'];
-                    }
+            $stns = [];
+            foreach($allStations as $station){
+                $afstand = distance($moskvaStation[0]['latitude'], $moskvaStation[0]['longitude'],$station['latitude'],$station['longitude']);
+                if($afstand <= 200){
+                    $stns[] = $station['stn'];
                 }
-
-                $stationnummers = implode(",",$stns);
-
-                $statement2 = $conn->db->prepare("
-                    SELECT * 
-                    FROM stations 
-                    WHERE stn 
-                    IN ($stationnummers)
-                    ");
-                $statement2->execute();
-                $statement2->execute();
-                $results2 = $statement2->fetchALL();
-
-                $json = json_encode($results2);
-                echo $json;
-            } else {
-                $app->response()->status(401);
-                $error = array("error"=> array("text"=>"Not authorized!")); 
-                echo json_encode($error); 
             }
 
+            $stationnummers = implode(",",$stns);
+
+            $statement2 = $conn->db->prepare("
+                SELECT * 
+                FROM stations 
+                WHERE stn 
+                IN ($stationnummers)
+                ");
+            $statement2->execute();
+            $statement2->execute();
+            $results2 = $statement2->fetchALL();
+
+            header('Content-Type: application/json');
+            $json = json_encode($results2);
+            echo $json;
         }
     );
 });
@@ -310,49 +309,45 @@ This should be available from Monday till Saturday 6:00 ~ 8:00 AM Moscow localti
 */
 $app->get(
     '/top10',
+    authenticateUser(),
     function() use($app){
-        if($_SESSION['loggedin'] == true){
-            $export = $_GET['export'];
+        $export = $_GET['export'];
 
-            $conn = Connection::getInstance();
+        $conn = Connection::getInstance();
 
-            if($export == "true"){// TODO ------------------------------------------------------------
-                // $query = "
-                //     SELECT s.country, s.name, s.longitude, m.date, m.time, m.temp    
-                //     FROM measurements AS m
-                //     ... MOET NOG
-                //     ";
-                // $headerArray = array(['Country', 'Name', 'Longitude', 'Date', 'Time', 'Temp celsius']);
-                // $filename = "top10-temps-longitude-moscow";
+        if($export == "true"){// TODO ------------------------------------------------------------
+            // $query = "
+            //     SELECT s.country, s.name, s.longitude, m.date, m.time, m.temp    
+            //     FROM measurements AS m
+            //     ... MOET NOG
+            //     ";
+            // $headerArray = array('Country', 'Name', 'Longitude', 'Date', 'Time', 'Temp celsius');
+            // $filename = "top10-temps-longitude-moscow";
 
-                // exportCSV($query, $headerArray, $filename);
+            // exportCSV($query, $headerArray, $filename);
 
-            } else {
-                $statement = $conn->db->prepare("
-                    SELECT s.country, m.temp, s.name, s.longitude, m.date, m.time 
-                    FROM measurements AS m
-                    JOIN stations AS s ON m.stn = s.stn
-                    WHERE s.longitude LIKE CONCAT (
-                        (SELECT TRUNCATE(longitude,0) 
-                        FROM stations
-                        WHERE name = 'MOSKVA'
-                        ),'%'
-                    )
-                    AND date >= now() - INTERVAL 1 DAY
-                    group by s.country
-                    ORDER BY temp DESC 
-                    LIMIT 10
-                    ");
-                $statement->execute();
-                $results = $statement->fetchAll(PDO::FETCH_ASSOC);
-                
-                $json = json_encode($results);
-                echo $json;
-            }
         } else {
-            $app->response()->status(401);
-            $error = array("error"=> array("text"=>"Not authorized!")); 
-            echo json_encode($error); 
+            $statement = $conn->db->prepare("
+                SELECT s.country, m.temp, s.name, s.longitude, m.date, m.time 
+                FROM measurements AS m
+                JOIN stations AS s ON m.stn = s.stn
+                WHERE s.longitude LIKE CONCAT (
+                    (SELECT TRUNCATE(longitude,0) 
+                    FROM stations
+                    WHERE name = 'MOSKVA'
+                    ),'%'
+                )
+                AND date >= now() - INTERVAL 1 DAY
+                group by s.country
+                ORDER BY temp DESC 
+                LIMIT 10
+                ");
+            $statement->execute();
+            $results = $statement->fetchAll(PDO::FETCH_ASSOC);
+            
+            header('Content-Type: application/json');
+            $json = json_encode($results);
+            echo $json;
         }
     }
 );
@@ -364,25 +359,21 @@ Rainfall in the world of any weatherstation of the current day
 */
 $app->get(
     '/rainfall/:station',
+    authenticateUser(),
     function ($station) use ($app){
-        if($_SESSION['loggedin'] == true){
-            $conn = Connection::getInstance();
-            $statement = $conn->db->prepare("
-                SELECT prcp, time 
-                FROM measurements 
-                WHERE stn = :stn 
-                AND date = :date
-                ");
-            $statement->execute( array(':stn' => "$station", ':date' => date("Y-m-d")) );
-            $results = $statement->fetchAll(PDO::FETCH_ASSOC);
-            
-            $json = json_encode($results);
-            echo $json;
-        } else {
-            $app->response()->status(401);
-            $error = array("error"=> array("text"=>"Not authorized!")); 
-            echo json_encode($error); 
-        }
+        $conn = Connection::getInstance();
+        $statement = $conn->db->prepare("
+            SELECT prcp, time 
+            FROM measurements 
+            WHERE stn = :stn 
+            AND date = :date
+            ");
+        $statement->execute( array(':stn' => "$station", ':date' => date("Y-m-d")) );
+        $results = $statement->fetchAll(PDO::FETCH_ASSOC);
+        
+        header('Content-Type: application/json');
+        $json = json_encode($results);
+        echo $json;
     }
 );
 
