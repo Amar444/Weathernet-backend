@@ -11,9 +11,14 @@ date_default_timezone_set('Europe/Moscow');
 
 $app = new \Slim\Slim();
 
-header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
+$corsOptions = array(
+    "origin" => "*",
+    "exposeHeaders" => array("Content-Type", "X-Requested-With", "X-authentication", "X-client"),
+    "allowMethods" => array('GET', 'POST', 'PUT', 'DELETE', 'OPTIONS')
+);
+$cors = new \CorsSlim\CorsSlim($corsOptions);
+
+$app->add($cors);
 
 $app->add(new \Slim\Middleware\SessionCookie(array(
     'expires' => '20 minutes',
@@ -30,24 +35,24 @@ $app->add(new \Slim\Middleware\SessionCookie(array(
 $app->get(
     '/',
     function () {
-        echo "De volgende params kunnen worden gebruikt: <br>
+        echo "The following parameters can be used: <br>
         <table>
         <tr><th>Params</th><th>Description</th></tr>
 
-        <tr><td><b> /station/:stationnumber </b></td><td> Alle info van dat stationnummer </td></tr>
+        <tr><td><b> /station/:stationnumber </b></td><td> All info of the given stationnumber </td></tr>
 
-        <tr><td><b> /station/all </b></td><td> Alle info van alle stations </td></tr>
+        <tr><td><b> /station/all </b></td><td> All info of all the stations </td></tr>
 
-        <tr><td><b> /moscow/all </b></td><td> Alle info over alle stations in een radius van 200km rondom moskou </td></tr>
+        <tr><td><b> /moscow/all </b></td><td> All info about all the stations in a radius of 200km around Moscow </td></tr>
 
-        <tr><td><b> /moscow/temp </b></td><td> First query requirement: The measurements around Moscow(200km radius, from the centre of Moscow. Moscow local time).<br>
+        <tr><td><b> /moscow/temp </b></td><td> <b>First query requirement:</b> The measurements around Moscow(200km radius, from the centre of Moscow. Moscow local time).<br>
 And only if the temperature is higher than 18 degrees celsius (query, max response time: 2 minutes) </td></tr>
 
-         <tr><td><b> /moscow/temp?export=true </b></td><td> download csv van nu tot max 3 maanden geleden. </td></tr>
+        <tr><td><b> /moscow/temp?export=true </b></td><td> Download CSV from now till 3 months ago. </td></tr>
 
-        <tr><td><b> /top10 </b></td><td> Second query requirement: With every Friday  22:00 – 00:00 will this query be accessed<br>
-Also about top 10 peak temperature in 24h per longitude, <br>
-only for Moscow (indicate which country the data is from) (max response time: 10 seconds)<br>
+        <tr><td><b> /top10 </b></td><td> <b>Second query requirement:</b> 
+The top 10 peak temperature in 24h per longitude (same longitude of Moscow), <br>
+(indicate which country the data is from) (max response time: 10 seconds)<br>
 This should be available from Monday till Saturday 6:00 ~ 8:00 AM Moscow localtime (GMT +3) </td></tr>
 
         <tr><td><b> /top10?export=true </b></td><td> download csv met max 10 temps van vandaag </td></tr>
@@ -56,6 +61,7 @@ This should be available from Monday till Saturday 6:00 ~ 8:00 AM Moscow localti
 (from the current time till 00:00, going back) </td></tr>
 
         <tr><td><b> /rainfall/:stationnumber?export=true </b></td><td> download csv van vandaag. </td></tr>
+        </table>
         ";
 
         echo "
