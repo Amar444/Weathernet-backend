@@ -50,8 +50,12 @@ Also about top 10 peak temperature in 24h per longitude, <br>
 only for Moscow (indicate which country the data is from) (max response time: 10 seconds)<br>
 This should be available from Monday till Saturday 6:00 ~ 8:00 AM Moscow localtime (GMT +3) </td></tr>
 
+        <tr><td><b> /top10?export=true </b></td><td> download csv met max 10 temps van vandaag </td></tr>
+
         <tr><td><b> /rainfall/:stationnumber </b></td><td> Third query requirement: Rainfall in the world of any weatherstation of the current day
 (from the current time till 00:00, going back) </td></tr>
+
+        <tr><td><b> /rainfall/:stationnumber?export=true </b></td><td> download csv van vandaag. </td></tr>
         ";
 
         echo "
@@ -89,9 +93,10 @@ function authenticateUser(){
         if(!isset($_SESSION['loggedin']) || $_SESSION['loggedin'] == false){
             $app = \Slim\Slim::getInstance();
             $app->response()->status(401);
-            header('Content-Type: application/json');
+            $app->response->headers->set('Content-Type', 'application/json');
             $error = array("error"=> array("text"=>"Not authorized!"));
             echo json_encode($error);
+            die;
         }
     };
 };
@@ -113,7 +118,7 @@ function exportCSV($query, $headerArray, $filename){
 //LOGIN
 $app->post(
     '/login',
-    function () {
+    function () use ($app) {
         $email = $_POST['email'];
         $password = $_POST['password'];
 
@@ -129,12 +134,29 @@ $app->post(
 
         if( count($results) <> 1 ){
             $error = array("error"=> array("text"=>"Username or Password does not exist, is not filled in, or is not correct"));
-            header('Content-Type: application/json');
+            $app->response->headers->set('Content-Type', 'application/json');
             echo json_encode($error);
         }else if( count($results) == 1){
             $_SESSION['loggedin'] = true;
             $success = array("success"=> array("text"=>"Log in successful"));
-            header('Content-Type: application/json');
+            $app->response->headers->set('Content-Type', 'application/json');
+            echo json_encode($success);
+        }
+    }
+);
+
+//LOGOUT
+$app->get(
+    '/logout',
+    function () use ($app) {
+        if( !isset($_SESSION['loggedin']) ){
+            $error = array("error"=> array("text"=>"There is nobody logged in!"));
+            $app->response->headers->set('Content-Type', 'application/json');
+            echo json_encode($error);
+        }else {
+            $_SESSION['loggedin'] = false;
+            $success = array("success"=> array("text"=>"You are now logged out!"));
+            $app->response->headers->set('Content-Type', 'application/json');
             echo json_encode($success);
         }
     }
@@ -161,7 +183,7 @@ $app->group('/station', function () use ($app) {
             }
             $results = $statement->fetchAll(PDO::FETCH_ASSOC);
 
-            header('Content-Type: application/json');
+            $app->response->headers->set('Content-Type', 'application/json');
             $json = json_encode($results);
             echo $json;
         }
@@ -219,7 +241,7 @@ $app->group('/moscow', function () use ($app) {
                     ORDER BY m.date, s.name, m.time DESC
                     ";
                 $headerArray = array('Name', 'Station', 'Date', 'Time', 'Temp celsius');
-                $filename = "moscow-temps";
+                $filename = "moscow-temps ".  date('Y-m-d',(strtotime ( '-3 month' , strtotime ( date("Y-m-d")) ) )) . " to ". date("Y-m-d");
 
                 exportCSV($query, $headerArray, $filename);
 
@@ -236,7 +258,7 @@ $app->group('/moscow', function () use ($app) {
                 $statement2->execute();
                 $results2 = $statement2->fetchALL();
 
-                header('Content-Type: application/json');
+                $app->response->headers->set('Content-Type', 'application/json');
                 $json = json_encode($results2);
                 echo $json;
             }
@@ -285,7 +307,7 @@ $app->group('/moscow', function () use ($app) {
             $statement2->execute();
             $results2 = $statement2->fetchALL();
 
-            header('Content-Type: application/json');
+            $app->response->headers->set('Content-Type', 'application/json');
             $json = json_encode($results2);
             echo $json;
         }
@@ -307,37 +329,35 @@ $app->get(
 
         $conn = Connection::getInstance();
 
-        if($export == "true"){// TODO ------------------------------------------------------------
-            // $query = "
-            //     SELECT s.country, s.name, s.longitude, m.date, m.time, m.temp
-            //     FROM measurements AS m
-            //     ... MOET NOG
-            //     ";
-            // $headerArray = array('Country', 'Name', 'Longitude', 'Date', 'Time', 'Temp celsius');
-            // $filename = "top10-temps-longitude-moscow";
+        $query = "
+            SELECT s.country, s.name, s.longitude, m.date, m.time, m.temp
+            FROM measurements AS m
+            JOIN stations AS s ON m.stn = s.stn
+            WHERE s.longitude LIKE CONCAT (
+                (SELECT TRUNCATE(longitude,0)
+                FROM stations
+                WHERE name = 'MOSKVA'
+                ),'%'
+            )
+            AND date >= now() - INTERVAL 1 DAY
+            group by s.country
+            ORDER BY temp DESC
+            LIMIT 10
+            ";
+        
+        $statement = $conn->db->prepare($query);
 
-            // exportCSV($query, $headerArray, $filename);
+        if($export == "true"){// TODO ------------------------------------------------------------
+            $headerArray = array('Country', 'Name', 'Longitude', 'Date', 'Time', 'Temp celsius');
+            $filename = "top10-temps-longitude-moscow ". date("Y-m-d");
+
+            exportCSV($query, $headerArray, $filename);
 
         } else {
-            $statement = $conn->db->prepare("
-                SELECT s.country, m.temp, s.name, s.longitude, m.date, m.time
-                FROM measurements AS m
-                JOIN stations AS s ON m.stn = s.stn
-                WHERE s.longitude LIKE CONCAT (
-                    (SELECT TRUNCATE(longitude,0)
-                    FROM stations
-                    WHERE name = 'MOSKVA'
-                    ),'%'
-                )
-                AND date >= now() - INTERVAL 1 DAY
-                group by s.country
-                ORDER BY temp DESC
-                LIMIT 10
-                ");
             $statement->execute();
             $results = $statement->fetchAll(PDO::FETCH_ASSOC);
 
-            header('Content-Type: application/json');
+            $app->response->headers->set('Content-Type', 'application/json');
             $json = json_encode($results);
             echo $json;
         }
@@ -353,19 +373,29 @@ $app->get(
     '/rainfall/:station',
     authenticateUser(),
     function ($station) use ($app){
+        $export = $_GET['export'];
         $conn = Connection::getInstance();
-        $statement = $conn->db->prepare("
-            SELECT prcp, time
+        $query = "
+            SELECT time, prcp
             FROM measurements
-            WHERE stn = :stn
-            AND date = :date
-            ");
-        $statement->execute( array(':stn' => "$station", ':date' => date("Y-m-d")) );
-        $results = $statement->fetchAll(PDO::FETCH_ASSOC);
+            WHERE stn = $station
+            AND date = '".date("Y-m-d")."'";
 
-        header('Content-Type: application/json');
-        $json = json_encode($results);
-        echo $json;
+        if($export == "true"){// TODO ------------------------------------------------------------
+            $headerArray = array('Time', 'Prcp');
+            $filename = "Rainfall stn-$station ". date("Y-m-d");
+
+            exportCSV($query, $headerArray, $filename);
+
+        } else {
+            $statement = $conn->db->prepare($query);
+            $statement->execute();
+            $results = $statement->fetchAll(PDO::FETCH_ASSOC);
+
+            $app->response->headers->set('Content-Type', 'application/json');
+            $json = json_encode($results);
+            echo $json;
+        }
     }
 );
 
