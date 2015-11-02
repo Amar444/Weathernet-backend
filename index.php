@@ -1,11 +1,30 @@
 <?php
 require 'Slim/Slim.php';
 include_once 'Connection.php';
+use League\Csv\Reader;
+use League\Csv\Writer;
+require 'vendor/autoload.php';
+
+date_default_timezone_set('Europe/Moscow');
 
 \Slim\Slim::registerAutoloader();
 
 $app = new \Slim\Slim();
 
+header('Access-Control-Allow-Origin: *');
+header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
+
+$app->add(new \Slim\Middleware\SessionCookie(array(
+    'expires' => '20 minutes',
+    'domain' => null,
+    'secure' => false,
+    'httponly' => false,
+    'name' => 'slim_session',
+    'secret' => 'CHANGE_ME',
+    'cipher' => MCRYPT_RIJNDAEL_256,
+    'cipher_mode' => MCRYPT_MODE_CBC
+)));
 
 // GET route
 $app->get(
@@ -19,12 +38,12 @@ $app->get(
 
         <tr><td><b> /station/all </b></td><td> Alle info van alle stations </td></tr>
 
-        <tr><td><b> /..... </b></td><td> More soon </td></tr>
+        <tr><td><b> /moscow/all </b></td><td> Alle info over alle stations in een radius van 200km rondom moskou </td></tr>
 
-        <tr><td><b> /200moscow </b></td><td> Alle info over alle stations in een radius van 200km rondom moskou </td></tr>
-
-        <tr><td><b> /moscow </b></td><td> First query requirement: The measurements around Moscow(200km radius, from the centre of Moscow. Moscow local time).<br> 
+        <tr><td><b> /moscow/temp </b></td><td> First query requirement: The measurements around Moscow(200km radius, from the centre of Moscow. Moscow local time).<br>
 And only if the temperature is higher than 18 degrees celsius (query, max response time: 2 minutes) </td></tr>
+
+         <tr><td><b> /moscow/temp?export=true </b></td><td> download csv van nu tot max 3 maanden geleden. </td></tr>
 
         <tr><td><b> /top10 </b></td><td> Second query requirement: With every Friday  22:00 – 00:00 will this query be accessed<br>
 Also about top 10 peak temperature in 24h per longitude, <br>
@@ -34,166 +53,21 @@ This should be available from Monday till Saturday 6:00 ~ 8:00 AM Moscow localti
         <tr><td><b> /rainfall/:stationnumber </b></td><td> Third query requirement: Rainfall in the world of any weatherstation of the current day
 (from the current time till 00:00, going back) </td></tr>
         ";
-    }
-);
 
-$app->group('/station', function () use ($app) {
-    $app->get(
-        '/:station',
-        function ($station) {
-            $conn = Connection::getInstance();
-
-            if($station == 'all'){
-                $statement = $conn->db->prepare("SELECT stn as 'id', name as 'title', country, latitude, longitude, elevation FROM stations");
-                $statement->execute();
-            }else {
-                $statement = $conn->db->prepare("SELECT stn as 'id', name as 'title', country latitude, longitude, elevation FROM stations WHERE stn = :stn");
-                $statement->execute(array(':stn' => "$station"));
-            }
-            $results = $statement->fetchAll(PDO::FETCH_ASSOC);
-
-            $json = json_encode($results);
-            echo $json;
-        }
-    );
-
-});
-
-$app->group('/measurement', function () use ($app) {
-    //moet nog
-});
-
-
-
-/*
-First: 
-The measurements around Moscow(200km radius, from the centre of Moscow. Moscow local time). 
-And only if the temperature is higher than 18 degrees celsius (query, max response time: 2 minutes)
-*/
-$app->get(
-    '/moscow',
-    function(){
-        $conn = Connection::getInstance();
-        $statement = $conn->db->prepare("SELECT stn, latitude, longitude FROM stations");
-        $stmt = $conn->db->prepare("SELECT latitude, longitude FROM stations where name = 'MOSKVA'");
-        
-        $statement->execute();
-        $stmt->execute();
-        
-        $allStations = $statement->fetchAll();
-        $moskvaStation = $stmt->fetchAll();
-
-        $stns = [];
-        foreach($allStations as $station){
-            $afstand = distance($moskvaStation[0]['latitude'], $moskvaStation[0]['longitude'],$station['latitude'],$station['longitude']);
-            if($afstand <= 200){
-                $stns[] = $station['stn'];
-            }
-        }
-
-        $stationnummers = implode(",",$stns);
-
-        $statement2 = $conn->db->prepare("SELECT stn, temp FROM measurements  WHERE stn in ($stationnummers) AND temp > 18");
-        $statement2->execute();
-        $statement2->execute();
-        $results2 = $statement2->fetchALL();
-
-        $json = json_encode($results2);
-        echo $json;
-
-            }
-);
-
-$app->get(
-    '/200moscow',
-        function(){
-            $conn = Connection::getInstance();
-        $statement = $conn->db->prepare("SELECT stn, latitude, longitude FROM stations");
-        $stmt = $conn->db->prepare("SELECT latitude, longitude FROM stations where name = 'MOSKVA'");
-        
-        $statement->execute();
-        $stmt->execute();
-        
-        $allStations = $statement->fetchAll();
-        $moskvaStation = $stmt->fetchAll();
-
-        $stns = [];
-        foreach($allStations as $station){
-            $afstand = distance($moskvaStation[0]['latitude'], $moskvaStation[0]['longitude'],$station['latitude'],$station['longitude']);
-            if($afstand <= 200){
-                $stns[] = $station['stn'];
-            }
-        }
-
-         $stationnummers = implode(",",$stns);
-
-        $statement2 = $conn->db->prepare("SELECT * FROM stations  WHERE stn in ($stationnummers)" );
-        $statement2->execute();
-        $statement2->execute();
-        $results2 = $statement2->fetchALL();
-
-        $json = json_encode($results2);
-        echo $json;
-
-        }
-
-
-
-    );
-
-/*
-Second:
-With every Friday  22:00 – 00:00 will this query be accessed
-Also about top 10 peak temperature in 24h per longitude, 
-only for Moscow (indicate which country the data is from) (max response time: 10 seconds)
-This should be available from Monday till Saturday 6:00 ~ 8:00 AM Moscow localtime (GMT +3)
-*/
-$app->get(
-    '/top10',
-    function(){
-        $conn = Connection::getInstance();
-        $statement = $conn->db->prepare("
-            SELECT s.country, m.temp, s.name, s.country, s.longitude, m.date, m.time 
-            FROM measurements AS m
-            JOIN stations AS s ON m.stn = s.stn
-            WHERE s.longitude LIKE CONCAT (
-                (SELECT TRUNCATE(longitude,0) 
-                FROM stations
-                WHERE name = 'MOSKVA'
-                ),'%'
-            )
-            AND date >= now() - INTERVAL 1 DAY
-            group by s.country
-            ORDER BY temp DESC 
-            LIMIT 10");
-        $statement->execute();
-        $results = $statement->fetchAll(PDO::FETCH_ASSOC);
-        
-        $json = json_encode($results);
-        echo $json;
-    }
-);
-
-/*
-Third:
-Rainfall in the world of any weatherstation of the current day
-(from the current time till 00:00, going back)
-*/
-$app->get(
-    '/rainfall/:station',
-    function ($station) {
-        $conn = Connection::getInstance();
-        $statement = $conn->db->prepare("SELECT prcp FROM measurements WHERE stn = :stn AND date = :date");
-        $statement->execute( array(':stn' => "$station", ':date' => date("Y-m-d")) );
-        $results = $statement->fetchAll(PDO::FETCH_ASSOC);
-        
-        $json = json_encode($results);
-        echo $json;
+        echo "
+            <form action='/login' method='post'>
+              email:<br>
+              <input type='text' name='email'>
+              <br>
+              password:<br>
+              <input type='password' name='password'>
+              <button type='submit' name='submit'>Login</button>
+            </form>
+        ";
     }
 );
 
 function distance($lat1, $lon1, $lat2, $lon2) {
-
     $pi80 = M_PI / 180;
     $lat1 *= $pi80;
     $lon1 *= $pi80;
@@ -207,9 +81,294 @@ function distance($lat1, $lon1, $lat2, $lon2) {
     $c = 2 * atan2(sqrt($a), sqrt(1 - $a));
     $km = $r * $c;
 
-    //echo '<br/>'.$km;
     return $km;
 }
+
+function authenticateUser(){
+    return function(){
+        if(!isset($_SESSION['loggedin']) || $_SESSION['loggedin'] == false){
+            $app = \Slim\Slim::getInstance();
+            $app->response()->status(401);
+            header('Content-Type: application/json');
+            $error = array("error"=> array("text"=>"Not authorized!"));
+            echo json_encode($error);
+        }
+    };
+};
+
+function exportCSV($query, $headerArray, $filename){
+    $conn = Connection::getInstance();
+    $statement = $conn->db->prepare($query);
+    $statement->setFetchMode(PDO::FETCH_ASSOC);
+    $statement->execute();
+
+    $csv = Writer::createFromFileObject(new SplTempFileObject());
+    $csv->insertOne($headerArray);
+    $csv->insertAll($statement);
+    $csv->output($filename.'.csv');
+    die;
+
+}
+
+//LOGIN
+$app->post(
+    '/login',
+    function () {
+        $email = $_POST['email'];
+        $password = $_POST['password'];
+
+        $conn = Connection::getInstance();
+        $statement = $conn->db->prepare("
+            SELECT *
+            FROM users
+            WHERE email = :email
+            AND password = :password
+            ");
+        $statement->execute( array(':email' => "$email", ':password' => "$password") );
+        $results = $statement->fetchAll();
+
+        if( count($results) <> 1 ){
+            $error = array("error"=> array("text"=>"Username or Password does not exist, is not filled in, or is not correct"));
+            header('Content-Type: application/json');
+            echo json_encode($error);
+        }else if( count($results) == 1){
+            $_SESSION['loggedin'] = true;
+            $success = array("success"=> array("text"=>"Log in successful"));
+            header('Content-Type: application/json');
+            echo json_encode($success);
+        }
+    }
+);
+
+
+//***********************************************************
+////**************** AUTHORIZED FUNCTIONS! //***********************************************************
+//***********************************************************
+
+$app->group('/station', function () use ($app) {
+    $app->get(
+        '/:station',
+        authenticateUser(),
+        function ($station) use ($app) {
+            $conn = Connection::getInstance();
+
+            if($station == 'all'){
+                $statement = $conn->db->prepare("SELECT stn as 'id', name as 'title', country, latitude, longitude FROM stations");
+                $statement->execute();
+            }else {
+                $statement = $conn->db->prepare("SELECT stn as 'id', name as 'title', country latitude, longitude FROM stations WHERE stn = :stn");
+                $statement->execute(array(':stn' => "$station"));
+            }
+            $results = $statement->fetchAll(PDO::FETCH_ASSOC);
+
+            header('Content-Type: application/json');
+            $json = json_encode($results);
+            echo $json;
+        }
+    );
+});
+
+
+/*
+First:
+The measurements around Moscow(200km radius, from the centre of Moscow. Moscow local time).
+And only if the temperature is higher than 18 degrees celsius (query, max response time: 2 minutes)
+*/
+$app->group('/moscow', function () use ($app) {
+    $app->get(
+        '/temp',
+        authenticateUser(),
+        function() use ($app){
+            $export = $_GET['export'];
+
+            $conn = Connection::getInstance();
+            $statement = $conn->db->prepare("
+                SELECT stn, latitude, longitude
+                FROM stations
+                ");
+            $stmt = $conn->db->prepare("
+                SELECT latitude, longitude
+                FROM stations
+                WHERE name = 'MOSKVA'
+                ");
+
+            $statement->execute();
+            $stmt->execute();
+
+            $allStations = $statement->fetchAll();
+            $moskvaStation = $stmt->fetchAll();
+
+            $stns = [];
+            foreach($allStations as $station){
+                $afstand = distance($moskvaStation[0]['latitude'], $moskvaStation[0]['longitude'],$station['latitude'],$station['longitude']);
+                if($afstand <= 200){
+                    $stns[] = $station['stn'];
+                }
+            }
+
+            $stationnummers = implode(",",$stns);
+
+            if($export == "true"){
+                $query = "
+                    SELECT s.name, m.stn, m.date, m.time, m.temp
+                    FROM measurements AS m
+                    JOIN stations AS s ON s.stn = m.stn
+                    WHERE m.stn
+                    IN ($stationnummers)
+                    AND m.date >= now()-interval 3 month
+                    ORDER BY m.date, s.name, m.time DESC
+                    ";
+                $headerArray = array('Name', 'Station', 'Date', 'Time', 'Temp celsius');
+                $filename = "moscow-temps";
+
+                exportCSV($query, $headerArray, $filename);
+
+            } else { //HAALT Alle measurements van de laatste 24h op
+                $statement2 = $conn->db->prepare("
+                    SELECT s.name, m.stn, m.temp, m.date, m.time
+                    FROM measurements AS m
+                    JOIN stations AS s ON s.stn = m.stn
+                    WHERE m.stn
+                    IN ($stationnummers)
+                    AND m.temp > 18
+                    AND date >= now() - INTERVAL 1 DAY
+                    ");
+                $statement2->execute();
+                $results2 = $statement2->fetchALL();
+
+                header('Content-Type: application/json');
+                $json = json_encode($results2);
+                echo $json;
+            }
+        }
+    );
+
+
+    $app->get(
+        '/all',
+        authenticateUser(),
+        function() use ($app){
+            $conn = Connection::getInstance();
+            $statement = $conn->db->prepare("
+                SELECT stn, latitude, longitude
+                FROM stations
+                ");
+            $stmt = $conn->db->prepare("
+                SELECT latitude, longitude
+                FROM stations
+                WHERE name = 'MOSKVA'
+                ");
+
+            $statement->execute();
+            $stmt->execute();
+
+            $allStations = $statement->fetchAll();
+            $moskvaStation = $stmt->fetchAll();
+
+            $stns = [];
+            foreach($allStations as $station){
+                $afstand = distance($moskvaStation[0]['latitude'], $moskvaStation[0]['longitude'],$station['latitude'],$station['longitude']);
+                if($afstand <= 200){
+                    $stns[] = $station['stn'];
+                }
+            }
+
+            $stationnummers = implode(",",$stns);
+
+            $statement2 = $conn->db->prepare("
+                SELECT *
+                FROM stations
+                WHERE stn
+                IN ($stationnummers)
+                ");
+            $statement2->execute();
+            $statement2->execute();
+            $results2 = $statement2->fetchALL();
+
+            header('Content-Type: application/json');
+            $json = json_encode($results2);
+            echo $json;
+        }
+    );
+});
+
+/*
+Second:
+With every Friday  22:00 – 00:00 will this query be accessed
+Also about top 10 peak temperature in 24h per longitude,
+only for Moscow (indicate which country the data is from) (max response time: 10 seconds)
+This should be available from Monday till Saturday 6:00 ~ 8:00 AM Moscow localtime (GMT +3)
+*/
+$app->get(
+    '/top10',
+    authenticateUser(),
+    function() use($app){
+        $export = $_GET['export'];
+
+        $conn = Connection::getInstance();
+
+        if($export == "true"){// TODO ------------------------------------------------------------
+            // $query = "
+            //     SELECT s.country, s.name, s.longitude, m.date, m.time, m.temp
+            //     FROM measurements AS m
+            //     ... MOET NOG
+            //     ";
+            // $headerArray = array('Country', 'Name', 'Longitude', 'Date', 'Time', 'Temp celsius');
+            // $filename = "top10-temps-longitude-moscow";
+
+            // exportCSV($query, $headerArray, $filename);
+
+        } else {
+            $statement = $conn->db->prepare("
+                SELECT s.country, m.temp, s.name, s.longitude, m.date, m.time
+                FROM measurements AS m
+                JOIN stations AS s ON m.stn = s.stn
+                WHERE s.longitude LIKE CONCAT (
+                    (SELECT TRUNCATE(longitude,0)
+                    FROM stations
+                    WHERE name = 'MOSKVA'
+                    ),'%'
+                )
+                AND date >= now() - INTERVAL 1 DAY
+                group by s.country
+                ORDER BY temp DESC
+                LIMIT 10
+                ");
+            $statement->execute();
+            $results = $statement->fetchAll(PDO::FETCH_ASSOC);
+
+            header('Content-Type: application/json');
+            $json = json_encode($results);
+            echo $json;
+        }
+    }
+);
+
+/*
+Third:
+Rainfall in the world of any weatherstation of the current day
+(from the current time till 00:00, going back)
+*/
+$app->get(
+    '/rainfall/:station',
+    authenticateUser(),
+    function ($station) use ($app){
+        $conn = Connection::getInstance();
+        $statement = $conn->db->prepare("
+            SELECT prcp, time
+            FROM measurements
+            WHERE stn = :stn
+            AND date = :date
+            ");
+        $statement->execute( array(':stn' => "$station", ':date' => date("Y-m-d")) );
+        $results = $statement->fetchAll(PDO::FETCH_ASSOC);
+
+        header('Content-Type: application/json');
+        $json = json_encode($results);
+        echo $json;
+    }
+);
+
 
 
 $app->run();
