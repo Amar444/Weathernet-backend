@@ -11,14 +11,9 @@ date_default_timezone_set('Europe/Moscow');
 
 $app = new \Slim\Slim();
 
-$corsOptions = array(
-    "origin" => "*",
-    "exposeHeaders" => array("Content-Type", "X-Requested-With", "X-authentication", "X-client"),
-    "allowMethods" => array('GET', 'POST', 'PUT', 'DELETE', 'OPTIONS')
-);
-$cors = new \CorsSlim\CorsSlim($corsOptions);
-
-$app->add($cors);
+header('Access-Control-Allow-Origin: *');
+header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
 
 $app->add(new \Slim\Middleware\SessionCookie(array(
     'expires' => '20 minutes',
@@ -50,7 +45,7 @@ And only if the temperature is higher than 18 degrees celsius (query, max respon
 
         <tr><td><b> /moscow/temp?export=true </b></td><td> Download CSV from now till 3 months ago. </td></tr>
 
-        <tr><td><b> /top10 </b></td><td> <b>Second query requirement:</b> 
+        <tr><td><b> /top10 </b></td><td> <b>Second query requirement:</b>
 The top 10 peak temperature in 24h per longitude (same longitude of Moscow), <br>
 (indicate which country the data is from) (max response time: 10 seconds)<br>
 This should be available from Monday till Saturday 6:00 ~ 8:00 AM Moscow localtime (GMT +3) </td></tr>
@@ -350,7 +345,7 @@ $app->get(
             ORDER BY temp DESC
             LIMIT 10
             ";
-        
+
         $statement = $conn->db->prepare($query);
 
         if($export == "true"){// TODO ------------------------------------------------------------
