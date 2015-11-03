@@ -124,10 +124,17 @@ $app->post(
     '/login',
     function () use ($app) {
 
-        $credentials = json_decode($app->request()->getBody()) ;
+        // check of we proberen te posten "inloggen vanaf zelfde site"
+        // zo niet dan halen we de credentials uit request body
+        if(isset($_POST['email']) && isset($_POST['password'])){
+            $email = $_POST['email'];
+            $password = $_POST['password'];
+        } else{
+            $credentials = json_decode($app->request()->getBody());
+            $email = $credentials->email;
+            $password = $credentials->password;
+        }
 
-        $email = $credentials->email;
-        $password = $credentials->password;
         $conn = Connection::getInstance();
         $statement = $conn->db->prepare("
             SELECT email, first_name, last_name
@@ -207,7 +214,8 @@ $app->group('/moscow', function () use ($app) {
         '/temp',
         authenticateUser(),
         function() use ($app){
-            $export = $_GET['export'];
+            // wel checken of die geset is anders werkt dit niet
+            $export = isset($_GET['export']) ? $_GET['export'] : false;
 
             $conn = Connection::getInstance();
             $statement = $conn->db->prepare("
@@ -236,6 +244,7 @@ $app->group('/moscow', function () use ($app) {
 
             $stationnummers = implode(",",$stns);
 
+            // wut waarom "true" en niet true - roelof 4-11-2015
             if($export == "true"){
                 $query = "
                     SELECT s.name, m.stn, m.date, m.time, m.temp
@@ -251,15 +260,18 @@ $app->group('/moscow', function () use ($app) {
 
                 exportCSV($query, $headerArray, $filename);
 
-            } else { //HAALT Alle measurements van de laatste 24h op
+            } else {
+                // HAALT Alle measurements van de laatste 3 maanden op
+                // temp > 10 anders kunnen we niet testen
+                // TODO VERANDER TERUG NAAR 18 WANT 10 IS GEEN REUQUIREMENT - roelof 4-11-2015
                 $statement2 = $conn->db->prepare("
                     SELECT s.name, m.stn, m.temp, m.date, m.time
                     FROM measurements AS m
                     JOIN stations AS s ON s.stn = m.stn
                     WHERE m.stn
                     IN ($stationnummers)
-                    AND m.temp > 18
-                    AND date >= now() - INTERVAL 1 DAY
+                    AND m.temp > 10
+                    AND date >= now() - INTERVAL 3 month
                     ");
                 $statement2->execute();
                 $results2 = $statement2->fetchALL();
