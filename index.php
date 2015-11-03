@@ -131,7 +131,7 @@ $app->post(
         $password = $credentials->password;
         $conn = Connection::getInstance();
         $statement = $conn->db->prepare("
-            SELECT *
+            SELECT email, first_name, last_name
             FROM users
             WHERE email = :email
             AND password = :password
@@ -145,7 +145,7 @@ $app->post(
             echo json_encode($error);
         }else if( count($results) == 1){
             $_SESSION['loggedin'] = true;
-            $success = array("success"=> array("text"=>"Log in successful"));
+            $success = array("success"=> array("text"=>"Log in successful"),"data" => json_encode($results));
             $app->response->headers->set('Content-Type', 'application/json');
             echo json_encode($success);
         }
@@ -182,7 +182,7 @@ $app->group('/station', function () use ($app) {
             $conn = Connection::getInstance();
 
             if($station == 'all'){
-                $statement = $conn->db->prepare("SELECT stn as 'id', name as 'title', country, latitude, longitude FROM stations");
+                $statement = $conn->db->prepare("SELECT stn, name as 'title', country, latitude, longitude FROM stations");
                 $statement->execute();
             }else {
                 $statement = $conn->db->prepare("SELECT stn as 'id', name as 'title', country latitude, longitude FROM stations WHERE stn = :stn");
@@ -305,7 +305,7 @@ $app->group('/moscow', function () use ($app) {
             $stationnummers = implode(",",$stns);
 
             $statement2 = $conn->db->prepare("
-                SELECT *
+                SELECT stn, name as 'title', country, longitude, latitude
                 FROM stations
                 WHERE stn
                 IN ($stationnummers)
