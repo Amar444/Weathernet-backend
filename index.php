@@ -343,6 +343,7 @@ $app->get(
     '/top10',
     authenticateUser(),
     function() use($app){
+        // check of het is gezet anders krijgen we 500 errors
         $export = isset($_GET['export']) ? $_GET['export'] : false;
 
         $conn = Connection::getInstance();
@@ -391,7 +392,8 @@ $app->get(
     '/rainfall/:station',
     authenticateUser(),
     function ($station) use ($app){
-        $export = $_GET['export'];
+        $export = isset($_GET['export']) ? $_GET['export'] : false;
+
         $conn = Connection::getInstance();
         $query = "
             SELECT time, prcp
