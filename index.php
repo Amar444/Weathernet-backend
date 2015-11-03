@@ -141,7 +141,7 @@ $app->post(
         if( count($results) <> 1 ){
             $error = array("error"=> array("text"=>"Username or Password does not exist, is not filled in, or is not correct"));
             $app->response->headers->set('Content-Type', 'application/json');
-            echo json_encode($error);
+            $app->halt(401, json_encode($error));
         }else if( count($results) == 1){
             $_SESSION['loggedin'] = true;
             $success = array("success"=> array("text"=>"Log in successful"),"data" => json_encode($results));
