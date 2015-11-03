@@ -343,7 +343,7 @@ $app->get(
     '/top10',
     authenticateUser(),
     function() use($app){
-        $export = $_GET['export'];
+        $export = isset($_GET['export']) ? $_GET['export'] : false;
 
         $conn = Connection::getInstance();
 
