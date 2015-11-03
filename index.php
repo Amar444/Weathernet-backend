@@ -94,10 +94,9 @@ function authenticateUser(){
     return function(){
         if(!isset($_SESSION['loggedin']) || $_SESSION['loggedin'] == false){
             $app = \Slim\Slim::getInstance();
-            $app->response()->status(401);
             $app->response->headers->set('Content-Type', 'application/json');
-            $error = array("error"=> array("text"=>"Not authorized!"));
-            echo json_encode($error);
+            $error = json_encode(array("error"=> array("text"=>"Not authorized!")));
+            $app->halt(401, $error);
             die;
         }
     };
