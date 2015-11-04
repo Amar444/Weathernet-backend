@@ -232,11 +232,14 @@ $app->group('/moscow', function () use ($app) {
             $stmt->execute();
 
             $allStations = $statement->fetchAll();
-            $moskvaStation = $stmt->fetchAll();
+            //$moskvaStation = $stmt->fetchAll();
+            $moskvaLatitude = "55.751244";
+            $moskvaLongitude = "37.618423";
+
 
             $stns = [];
             foreach($allStations as $station){
-                $afstand = distance($moskvaStation[0]['latitude'], $moskvaStation[0]['longitude'],$station['latitude'],$station['longitude']);
+                $afstand = distance($moskvaLatitude, $moskvaLongitude ,$station['latitude'],$station['longitude']);
                 if($afstand <= 200){
                     $stns[] = $station['stn'];
                 }
@@ -303,11 +306,13 @@ $app->group('/moscow', function () use ($app) {
             $stmt->execute();
 
             $allStations = $statement->fetchAll();
-            $moskvaStation = $stmt->fetchAll();
+            //$moskvaStation = $stmt->fetchAll();
+            $moskvaLatitude = "55.751244";
+            $moskvaLongitude = "37.618423";
 
             $stns = [];
             foreach($allStations as $station){
-                $afstand = distance($moskvaStation[0]['latitude'], $moskvaStation[0]['longitude'],$station['latitude'],$station['longitude']);
+                $afstand = distance($moskvaLatitude, $moskvaLongitude ,$station['latitude'],$station['longitude']);
                 if($afstand <= 200){
                     $stns[] = $station['stn'];
                 }
