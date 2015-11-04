@@ -17,7 +17,7 @@ header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-W
 header('Access-Control-Allow-Credentials: true');
 
 $app->add(new \Slim\Middleware\SessionCookie(array(
-    'expires' => '20 minutes',
+    'expires' => '60 minutes',
     'domain' => null,
     'secure' => false,
     'httponly' => false,
@@ -211,9 +211,9 @@ And only if the temperature is higher than 18 degrees celsius (query, max respon
 */
 $app->group('/moscow', function () use ($app) {
     $app->get(
-        '/temp',
+        '/temp/:temp',
         authenticateUser(),
-        function() use ($app){
+        function($temp) use ($app){
             // wel checken of die geset is anders werkt dit niet
             $export = isset($_GET['export']) ? $_GET['export'] : false;
 
@@ -252,6 +252,7 @@ $app->group('/moscow', function () use ($app) {
                     JOIN stations AS s ON s.stn = m.stn
                     WHERE m.stn
                     IN ($stationnummers)
+                    AND m.temp > ".$temp."
                     AND m.date >= now()-interval 3 month
                     ORDER BY m.date, s.name, m.time DESC
                     ";
@@ -270,10 +271,10 @@ $app->group('/moscow', function () use ($app) {
                     JOIN stations AS s ON s.stn = m.stn
                     WHERE m.stn
                     IN ($stationnummers)
-                    AND m.temp > 10
+                    AND m.temp > :temp
                     AND date >= now() - INTERVAL 3 month
                     ");
-                $statement2->execute();
+                $statement2->execute(array('temp' => $temp));
                 $results2 = $statement2->fetchALL();
 
                 $app->response->headers->set('Content-Type', 'application/json');
