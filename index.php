@@ -276,6 +276,7 @@ $app->group('/moscow', function () use ($app) {
                     IN ($stationnummers)
                     AND m.temp > :temp
                     AND date >= now() - INTERVAL 3 month
+                    ORDER BY date ASC, time ASC
                     ");
                 $statement2->execute(array('temp' => $temp));
                 $results2 = $statement2->fetchALL();
