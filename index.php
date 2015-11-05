@@ -406,7 +406,8 @@ $app->get(
             SELECT time, prcp
             FROM measurements
             WHERE stn = $station
-            AND date = '".date("Y-m-d")."'";
+            AND date = '".date("Y-m-d")."'
+            ORDER BY time ASC";
 
         if($export == "true"){// TODO ------------------------------------------------------------
             $headerArray = array('Time', 'Prcp');
