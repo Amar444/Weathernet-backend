@@ -5,7 +5,7 @@ use League\Csv\Reader;
 use League\Csv\Writer;
 require 'vendor/autoload.php';
 
-date_default_timezone_set('Europe/Moscow');
+date_default_timezone_set('UTC');
 
 \Slim\Slim::registerAutoloader();
 
