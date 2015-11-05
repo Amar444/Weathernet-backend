@@ -191,7 +191,7 @@ $app->group('/station', function () use ($app) {
                 $statement = $conn->db->prepare("SELECT stn, name as 'title', country, latitude, longitude FROM stations");
                 $statement->execute();
             }else {
-                $statement = $conn->db->prepare("SELECT stn as 'id', name as 'title', country latitude, longitude FROM stations WHERE stn = :stn");
+                $statement = $conn->db->prepare("SELECT stn, name as 'title', country, latitude, longitude FROM stations WHERE stn = :stn");
                 $statement->execute(array(':stn' => "$station"));
             }
             $results = $statement->fetchAll(PDO::FETCH_ASSOC);
