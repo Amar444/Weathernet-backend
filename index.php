@@ -11,6 +11,9 @@ date_default_timezone_set('UTC');
 
 $app = new \Slim\Slim();
 
+//Disable debugging
+$app->config('debug', false);
+
 header('Access-Control-Allow-Origin: http://localhost:9000');
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
@@ -409,9 +412,18 @@ $app->get(
             AND date = '".date("Y-m-d")."'
             ORDER BY time ASC";
 
-        if($export == "true"){// TODO ------------------------------------------------------------
-            $headerArray = array('Time', 'Prcp');
-            $filename = "Rainfall stn-$station ". date("Y-m-d");
+
+        if($export == "true"){
+            $stmt = $conn->db->prepare("Select name from stations where stn = :stn");
+            $stmt->execute([':stn' => $station]);
+            $res = $stmt->fetchAll();
+            $name = $station;
+            if(count($res) > 0){
+                $name = $res[0]['name'];
+            }
+
+            $headerArray = array('time', 'trcp');
+            $filename = "Rainfall_{$name}_". date("Y-m-d");
 
             exportCSV($query, $headerArray, $filename);
 
