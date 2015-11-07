@@ -260,7 +260,7 @@ $app->group('/moscow', function () use ($app) {
                     IN ($stationnummers)
                     AND m.temp > ".$temp."
                     AND m.date >= now()-interval 3 month
-                    ORDER BY m.date, s.name, m.time DESC
+                    ORDER BY s.name DESC, m.date ASC, m.time ASC
                     ";
                 $headerArray = array('Name', 'Station', 'Date', 'Time', 'Temp celsius');
                 $filename = "moscow-temps ".  date('Y-m-d',(strtotime ( '-3 month' , strtotime ( date("Y-m-d")) ) )) . " to ". date("Y-m-d");
@@ -284,9 +284,41 @@ $app->group('/moscow', function () use ($app) {
                 $statement2->execute(array('temp' => $temp));
                 $results2 = $statement2->fetchALL();
 
+                $labels = [];
+                $response = [];
+                $stations = [];
+                $series = [];
+                // fill stations
+                foreach($results2 as $r){
+                    if(!in_array($r['stn'], $stations)){
+                        $stations[] = $r['stn'];
+                        $series[] = $r['name'];
+                    }
+                }
+                // fill labels and response
+                foreach($results2 as $r){
+                    if(!in_array($r['date'].'_'.$r['time'], $labels)){
+                        $labels[] = $r['date'].'_'.$r['time'];
+                    }
+                    // Vul de bekende value van stn die we weten
+                    $response[$r['stn']][] = $r['temp'];
+                    foreach($stations as $stn){
+                        if($stn != $r['stn']){
+                            $c = isset($response[$stn]) ? count($response[$stn]) : 0;
+                            if($c > 0){
+                                $response[$stn][] = $response[$stn][$c-1];
+                            } else {
+                                $response[$stn][] = null;
+                            }
+                        }
+                    }
+                }
+                $res['series'] = $series;
+                $res['labels'] = $labels;
+                $res['data'] = $response;
+
                 $app->response->headers->set('Content-Type', 'application/json');
-                $json = json_encode($results2);
-                echo $json;
+                echo json_encode($res);
             }
         }
     );
@@ -374,6 +406,8 @@ $app->get(
             LIMIT 10
             ";
 
+
+
         $statement = $conn->db->prepare($query);
 
         if($export == "true"){// TODO ------------------------------------------------------------
@@ -422,7 +456,7 @@ $app->get(
                 $name = $res[0]['name'];
             }
 
-            $headerArray = array('time', 'trcp');
+            $headerArray = array('time', 'Prcp');
             $filename = "Rainfall_{$name}_". date("Y-m-d");
 
             exportCSV($query, $headerArray, $filename);
