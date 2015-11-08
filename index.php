@@ -126,6 +126,8 @@ $app->options('/(:name+)', function() use ($app) {
 $app->post(
     '/login',
     function () use ($app) {
+        // header altijd nodig
+        $app->response->headers->set('Content-Type', 'application/json');
 
         // check of we proberen te posten "inloggen vanaf zelfde site"
         // zo niet dan halen we de credentials uit request body
@@ -139,25 +141,28 @@ $app->post(
         }
 
         $conn = Connection::getInstance();
-        $statement = $conn->db->prepare("
-            SELECT email, first_name, last_name
-            FROM users
-            WHERE email = :email
-            AND password = :password
-            ");
-        $statement->execute( array(':email' => "$email", ':password' => "$password") );
-        $results = $statement->fetchAll();
+        $passwd = $conn->db->prepare("
+            SELECT email, first_name, last_name, password 
+            FROM users 
+            WHERE email = :email");
+        $passwd->execute(array('email' => $email));
+        $results = $passwd->fetchAll();
 
-        if( count($results) <> 1 ){
-            $error = array("error"=> array("text"=>"Username or Password does not exist, is not filled in, or is not correct"));
-            $app->response->headers->set('Content-Type', 'application/json');
-            $app->halt(401, json_encode($error));
-        }else if( count($results) == 1){
-            $_SESSION['loggedin'] = true;
-            $success = array("success"=> array("text"=>"Log in successful"),"data" => json_encode($results));
-            $app->response->headers->set('Content-Type', 'application/json');
-            echo json_encode($success);
+        if(count($results) > 0){
+            // valid email
+            if(password_verify($password, $results[0]['password'])){
+                // valid password
+                $_SESSION['loggedin'] = true;
+                $success = array("success"=> array("text"=>"Log in successful"),"data" => json_encode($results));
+                echo json_encode($success);
+                return;
+            }
         }
+
+        // Halt if invalid email or password
+        $error = array("error"=> array("text"=>"Username or Password does not exist, is not filled in, or is not correct"));
+        $app->response->headers->set('Content-Type', 'application/json');
+        $app->halt(401, json_encode($error));
     }
 );
 
