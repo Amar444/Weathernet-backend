@@ -400,7 +400,7 @@ $app->get(
                 WHERE name = 'MOSKVA'
                 ),'%'
             )
-            AND date >= now() - INTERVAL 1 DAY
+            AND UNIX_TIMESTAMP(CONCAT(date,' ',time)) >= UNIX_TIMESTAMP(UTC_TIMESTAMP()-interval 24 hour)
             group by s.country
             ORDER BY temp DESC
             LIMIT 10
