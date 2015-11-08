@@ -151,6 +151,7 @@ $app->post(
         if(count($results) > 0){
             // valid email
             if(password_verify($password, $results[0]['password'])){
+                unset($results[0]['password']);
                 // valid password
                 $_SESSION['loggedin'] = true;
                 $success = array("success"=> array("text"=>"Log in successful"),"data" => json_encode($results));
