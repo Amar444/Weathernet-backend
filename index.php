@@ -5,11 +5,14 @@ use League\Csv\Reader;
 use League\Csv\Writer;
 require 'vendor/autoload.php';
 
-date_default_timezone_set('Europe/Moscow');
+date_default_timezone_set('UTC');
 
 \Slim\Slim::registerAutoloader();
 
 $app = new \Slim\Slim();
+
+//Disable debugging
+$app->config('debug', false);
 
 header('Access-Control-Allow-Origin: http://unwdmi.nl:82');
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
@@ -124,10 +127,17 @@ $app->post(
     '/login',
     function () use ($app) {
 
-        $credentials = json_decode($app->request()->getBody()) ;
+        // check of we proberen te posten "inloggen vanaf zelfde site"
+        // zo niet dan halen we de credentials uit request body
+        if(isset($_POST['email']) && isset($_POST['password'])){
+            $email = $_POST['email'];
+            $password = $_POST['password'];
+        } else{
+            $credentials = json_decode($app->request()->getBody());
+            $email = $credentials->email;
+            $password = $credentials->password;
+        }
 
-        $email = $credentials->email;
-        $password = $credentials->password;
         $conn = Connection::getInstance();
         $statement = $conn->db->prepare("
             SELECT email, first_name, last_name
@@ -184,7 +194,7 @@ $app->group('/station', function () use ($app) {
                 $statement = $conn->db->prepare("SELECT stn, name as 'title', country, latitude, longitude FROM stations");
                 $statement->execute();
             }else {
-                $statement = $conn->db->prepare("SELECT stn as 'id', name as 'title', country latitude, longitude FROM stations WHERE stn = :stn");
+                $statement = $conn->db->prepare("SELECT stn, name as 'title', country, latitude, longitude FROM stations WHERE stn = :stn");
                 $statement->execute(array(':stn' => "$station"));
             }
             $results = $statement->fetchAll(PDO::FETCH_ASSOC);
@@ -204,10 +214,11 @@ And only if the temperature is higher than 18 degrees celsius (query, max respon
 */
 $app->group('/moscow', function () use ($app) {
     $app->get(
-        '/temp',
+        '/temp/:temp',
         authenticateUser(),
-        function() use ($app){
-            $export = $_GET['export'];
+        function($temp) use ($app){
+            // wel checken of die geset is anders werkt dit niet
+            $export = isset($_GET['export']) ? $_GET['export'] : false;
 
             $conn = Connection::getInstance();
             $statement = $conn->db->prepare("
@@ -224,11 +235,14 @@ $app->group('/moscow', function () use ($app) {
             $stmt->execute();
 
             $allStations = $statement->fetchAll();
-            $moskvaStation = $stmt->fetchAll();
+            //$moskvaStation = $stmt->fetchAll();
+            $moskvaLatitude = "55.751244";
+            $moskvaLongitude = "37.618423";
+
 
             $stns = [];
             foreach($allStations as $station){
-                $afstand = distance($moskvaStation[0]['latitude'], $moskvaStation[0]['longitude'],$station['latitude'],$station['longitude']);
+                $afstand = distance($moskvaLatitude, $moskvaLongitude ,$station['latitude'],$station['longitude']);
                 if($afstand <= 200){
                     $stns[] = $station['stn'];
                 }
@@ -236,6 +250,7 @@ $app->group('/moscow', function () use ($app) {
 
             $stationnummers = implode(",",$stns);
 
+            // wut waarom "true" en niet true - roelof 4-11-2015
             if($export == "true"){
                 $query = "
                     SELECT s.name, m.stn, m.date, m.time, m.temp
@@ -243,30 +258,67 @@ $app->group('/moscow', function () use ($app) {
                     JOIN stations AS s ON s.stn = m.stn
                     WHERE m.stn
                     IN ($stationnummers)
+                    AND m.temp > ".$temp."
                     AND m.date >= now()-interval 3 month
-                    ORDER BY m.date, s.name, m.time DESC
+                    ORDER BY s.name DESC, m.date ASC, m.time ASC
                     ";
                 $headerArray = array('Name', 'Station', 'Date', 'Time', 'Temp celsius');
                 $filename = "moscow-temps ".  date('Y-m-d',(strtotime ( '-3 month' , strtotime ( date("Y-m-d")) ) )) . " to ". date("Y-m-d");
 
                 exportCSV($query, $headerArray, $filename);
 
-            } else { //HAALT Alle measurements van de laatste 24h op
+            } else {
+                // HAALT Alle measurements van de laatste 3 maanden op
+                // temp > 10 anders kunnen we niet testen
+                // TODO VERANDER TERUG NAAR 18 WANT 10 IS GEEN REUQUIREMENT - roelof 4-11-2015
                 $statement2 = $conn->db->prepare("
                     SELECT s.name, m.stn, m.temp, m.date, m.time
                     FROM measurements AS m
                     JOIN stations AS s ON s.stn = m.stn
                     WHERE m.stn
                     IN ($stationnummers)
-                    AND m.temp > 18
-                    AND date >= now() - INTERVAL 1 DAY
+                    AND m.temp > :temp
+                    AND date >= now() - INTERVAL 3 month
+                    ORDER BY date ASC, time ASC
                     ");
-                $statement2->execute();
+                $statement2->execute(array('temp' => $temp));
                 $results2 = $statement2->fetchALL();
 
+                $labels = [];
+                $response = [];
+                $stations = [];
+                $series = [];
+                // fill stations
+                foreach($results2 as $r){
+                    if(!in_array($r['stn'], $stations)){
+                        $stations[] = $r['stn'];
+                        $series[] = $r['name'];
+                    }
+                }
+                // fill labels and response
+                foreach($results2 as $r){
+                    if(!in_array($r['date'].'_'.$r['time'], $labels)){
+                        $labels[] = $r['date'].'_'.$r['time'];
+                    }
+                    // Vul de bekende value van stn die we weten
+                    $response[$r['stn']][] = $r['temp'];
+                    foreach($stations as $stn){
+                        if($stn != $r['stn']){
+                            $c = isset($response[$stn]) ? count($response[$stn]) : 0;
+                            if($c > 0){
+                                $response[$stn][] = $response[$stn][$c-1];
+                            } else {
+                                $response[$stn][] = null;
+                            }
+                        }
+                    }
+                }
+                $res['series'] = $series;
+                $res['labels'] = $labels;
+                $res['data'] = $response;
+
                 $app->response->headers->set('Content-Type', 'application/json');
-                $json = json_encode($results2);
-                echo $json;
+                echo json_encode($res);
             }
         }
     );
@@ -291,11 +343,13 @@ $app->group('/moscow', function () use ($app) {
             $stmt->execute();
 
             $allStations = $statement->fetchAll();
-            $moskvaStation = $stmt->fetchAll();
+            //$moskvaStation = $stmt->fetchAll();
+            $moskvaLatitude = "55.751244";
+            $moskvaLongitude = "37.618423";
 
             $stns = [];
             foreach($allStations as $station){
-                $afstand = distance($moskvaStation[0]['latitude'], $moskvaStation[0]['longitude'],$station['latitude'],$station['longitude']);
+                $afstand = distance($moskvaLatitude, $moskvaLongitude ,$station['latitude'],$station['longitude']);
                 if($afstand <= 200){
                     $stns[] = $station['stn'];
                 }
@@ -331,7 +385,8 @@ $app->get(
     '/top10',
     authenticateUser(),
     function() use($app){
-        $export = $_GET['export'];
+        // check of het is gezet anders krijgen we 500 errors
+        $export = isset($_GET['export']) ? $_GET['export'] : false;
 
         $conn = Connection::getInstance();
 
@@ -350,6 +405,8 @@ $app->get(
             ORDER BY temp DESC
             LIMIT 10
             ";
+
+
 
         $statement = $conn->db->prepare($query);
 
@@ -379,17 +436,28 @@ $app->get(
     '/rainfall/:station',
     authenticateUser(),
     function ($station) use ($app){
-        $export = $_GET['export'];
+        $export = isset($_GET['export']) ? $_GET['export'] : false;
+
         $conn = Connection::getInstance();
         $query = "
             SELECT time, prcp
             FROM measurements
             WHERE stn = $station
-            AND date = '".date("Y-m-d")."'";
+            AND date = '".date("Y-m-d")."'
+            ORDER BY time ASC";
 
-        if($export == "true"){// TODO ------------------------------------------------------------
-            $headerArray = array('Time', 'Prcp');
-            $filename = "Rainfall stn-$station ". date("Y-m-d");
+
+        if($export == "true"){
+            $stmt = $conn->db->prepare("Select name from stations where stn = :stn");
+            $stmt->execute([':stn' => $station]);
+            $res = $stmt->fetchAll();
+            $name = $station;
+            if(count($res) > 0){
+                $name = $res[0]['name'];
+            }
+
+            $headerArray = array('time', 'Prcp');
+            $filename = "Rainfall_{$name}_". date("Y-m-d");
 
             exportCSV($query, $headerArray, $filename);
 
