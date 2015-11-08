@@ -12,9 +12,9 @@ date_default_timezone_set('UTC');
 $app = new \Slim\Slim();
 
 //Disable debugging
-$app->config('debug', false);
-
-header('Access-Control-Allow-Origin: http://unwdmi.nl:82');
+//$app->config('debug', false);
+$origin = $_SERVER["HTTP_ORIGIN"];
+header('Access-Control-Allow-Origin: '.$origin);
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
 header('Access-Control-Allow-Credentials: true');
