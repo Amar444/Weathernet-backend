@@ -11,13 +11,13 @@ date_default_timezone_set('Europe/Moscow');
 
 $app = new \Slim\Slim();
 
-header('Access-Control-Allow-Origin: http://localhost:9000');
+header('Access-Control-Allow-Origin: http://unwdmi.nl:82');
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
 header('Access-Control-Allow-Credentials: true');
 
 $app->add(new \Slim\Middleware\SessionCookie(array(
-    'expires' => '20 minutes',
+    'expires' => '60 minutes',
     'domain' => null,
     'secure' => false,
     'httponly' => false,
@@ -141,7 +141,7 @@ $app->post(
         if( count($results) <> 1 ){
             $error = array("error"=> array("text"=>"Username or Password does not exist, is not filled in, or is not correct"));
             $app->response->headers->set('Content-Type', 'application/json');
-            echo json_encode($error);
+            $app->halt(401, json_encode($error));
         }else if( count($results) == 1){
             $_SESSION['loggedin'] = true;
             $success = array("success"=> array("text"=>"Log in successful"),"data" => json_encode($results));
